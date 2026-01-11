@@ -1,0 +1,28 @@
+# Dependencies - installed fresh in container
+node_modules
+
+# Build output - built fresh in container
+dist
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+
+# Environment files
+.env*
+
+# Planning directory
+.planning
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
