@@ -19,10 +19,10 @@ Fast CI/CD pipeline — push to main triggers automatic deployment to production
 
 ### Active
 
-- [ ] Dockerfile for containerized deployment
-- [ ] GitHub Actions workflow for CI/CD
-- [ ] Integration with docker-compose.prod.yml (PillRoute)
-- [ ] Nginx configuration for scanner.quickprx.com subdomain
+- [x] Dockerfile for containerized deployment
+- [x] GitHub Actions workflow for CI/CD
+- [x] Integration with docker-compose.prod.yml (PillRoute)
+- [x] Nginx configuration for scanner.quickprx.com subdomain
 
 ### Out of Scope
 
@@ -59,9 +59,9 @@ Fast CI/CD pipeline — push to main triggers automatic deployment to production
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Use DOCR not Docker Hub | Existing infrastructure uses DOCR | — Pending |
-| Static nginx container | SPA needs only static file serving | — Pending |
-| Shared nginx config | Integrate with existing reverse proxy | — Pending |
+| Use DOCR not Docker Hub | Existing infrastructure uses DOCR | ✓ Implemented |
+| Static nginx container | SPA needs only static file serving | ✓ Implemented |
+| Shared nginx config | Integrate with existing reverse proxy | ✓ Implemented |
 
 ---
-*Last updated: 2026-01-11 after initialization*
+*Last updated: 2026-01-11 — All phases complete*
