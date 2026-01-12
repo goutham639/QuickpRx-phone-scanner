@@ -6,15 +6,19 @@ import ScanFeedback from './ScanFeedback';
 interface ScannerProps {
   status: SessionStatus;
   scanCount: number;
+  scanError: string | null;
   onScan: (barcode: string) => void;
   onDisconnect: () => void;
+  onClearScanError: () => void;
 }
 
 export default function Scanner({
   status,
   scanCount,
+  scanError,
   onScan,
   onDisconnect,
+  onClearScanError,
 }: ScannerProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [lastBarcode, setLastBarcode] = useState<string | null>(null);
@@ -40,6 +44,16 @@ export default function Scanner({
   );
 
   const { videoRef, isActive, error, start, stop } = useBarcodeScanner(handleScan);
+
+  // Auto-dismiss scan error after 2 seconds
+  useEffect(() => {
+    if (scanError) {
+      const timer = setTimeout(() => {
+        onClearScanError();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [scanError, onClearScanError]);
 
   // Auto-start camera on mount
   useEffect(() => {
@@ -67,6 +81,15 @@ export default function Scanner({
     <div className="h-screen flex flex-col bg-black">
       {/* Scan Feedback Overlay */}
       <ScanFeedback barcode={feedbackBarcode} onComplete={handleFeedbackComplete} />
+
+      {/* Scan Error Toast */}
+      {scanError && (
+        <div className="absolute top-0 left-0 right-0 z-50 safe-top">
+          <div className="bg-red-600 text-white px-4 py-3 text-center text-sm font-medium">
+            {scanError}
+          </div>
+        </div>
+      )}
 
       {/* Header Bar */}
       <div className="safe-top bg-black/80 backdrop-blur flex items-center justify-between px-4 py-3">

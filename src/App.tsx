@@ -7,10 +7,12 @@ export default function App() {
     status,
     sessionId,
     error,
+    lastScanError,
     scanCount,
     pair,
     sendScan,
     disconnect,
+    clearScanError,
   } = useScannerSession();
 
   // Flow: No session → PairCodeInput, Has session → Scanner
@@ -28,8 +30,10 @@ export default function App() {
     <Scanner
       status={status}
       scanCount={scanCount}
+      scanError={lastScanError}
       onScan={sendScan}
       onDisconnect={disconnect}
+      onClearScanError={clearScanError}
     />
   );
 }
