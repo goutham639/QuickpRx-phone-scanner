@@ -5,10 +5,12 @@ export interface UseScannerSession {
   status: SessionStatus;
   sessionId: string | null;
   error: string | null;
+  lastScanError: string | null;
   scanCount: number;
   pair: (code: string) => Promise<boolean>;
   sendScan: (barcode: string) => void;
   disconnect: () => void;
+  clearScanError: () => void;
 }
 
 // Environment configuration
@@ -22,6 +24,7 @@ export function useScannerSession(): UseScannerSession {
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastScanError, setLastScanError] = useState<string | null>(null);
   const [scanCount, setScanCount] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -77,8 +80,12 @@ export function useScannerSession(): UseScannerSession {
             setSessionId(null);
             setError('Session was closed');
             break;
-          case 'scan.received':
-            // Server acknowledged scan
+          case 'scan.confirmed':
+            // Server confirmed scan was stored successfully
+            break;
+          case 'scan.error':
+            // Server rejected the scan
+            setLastScanError(typeof data.error === 'string' ? data.error : 'Scan failed');
             break;
         }
       } catch {
@@ -202,10 +209,15 @@ export function useScannerSession(): UseScannerSession {
     setStatus('idle');
     setSessionId(null);
     setError(null);
+    setLastScanError(null);
     setScanCount(0);
     reconnectAttemptRef.current = 0;
     pendingScansRef.current = [];
     tokenRef.current = null;
+  }, []);
+
+  const clearScanError = useCallback(() => {
+    setLastScanError(null);
   }, []);
 
   // Cleanup on unmount
@@ -224,9 +236,11 @@ export function useScannerSession(): UseScannerSession {
     status,
     sessionId,
     error,
+    lastScanError,
     scanCount,
     pair,
     sendScan,
     disconnect,
+    clearScanError,
   };
 }

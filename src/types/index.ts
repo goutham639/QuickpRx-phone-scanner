@@ -18,4 +18,5 @@ export interface WebSocketMessage {
   barcode?: string;
   scanned_at?: string;
   error?: string;
+  data?: { id: number; barcode: string; scanned_at: string };
 }
