@@ -39,15 +39,15 @@ None
 Plans:
 - [x] 05-01: Label Scan API client with useLabelScanSession hook — completed 2026-01-14
 
-#### Phase 6: Camera Capture
+#### Phase 6: Camera Capture ✓
 
 **Goal**: Camera access, photo capture, and image blob handling for label photos
 **Depends on**: Phase 5
 **Research**: Unlikely (can adapt existing barcode camera code)
-**Plans**: TBD
+**Plans**: 1/1 complete
 
 Plans:
-- [ ] 06-01: TBD
+- [x] 06-01: useLabelCapture hook with camera management and photo capture — completed 2026-01-14
 
 #### Phase 7: Label Scan UI
 
@@ -68,5 +68,5 @@ Plans:
 | 3. Infrastructure Integration | v1.0 | 1/1 | Complete | 2026-01-11 |
 | 4. Scan Submit Handler | v1.0 | 1/1 | Complete | 2026-01-12 |
 | 5. Label Scan API | v2.0 | 1/1 | Complete | 2026-01-14 |
-| 6. Camera Capture | v2.0 | 0/? | Not started | - |
+| 6. Camera Capture | v2.0 | 1/1 | Complete | 2026-01-14 |
 | 7. Label Scan UI | v2.0 | 0/? | Not started | - |
