@@ -20,3 +20,23 @@ export interface WebSocketMessage {
   error?: string;
   data?: { id: number; barcode: string; scanned_at: string };
 }
+
+// Label Scan types
+export type LabelScanSessionStatus = 'idle' | 'joining' | 'active' | 'uploading' | 'error';
+
+export type ScanItemStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export interface LabelScanJoinResponse {
+  session_id: string;
+  token: string;
+  expires_at: string;
+}
+
+export interface LabelScanUploadResponse {
+  success: boolean;
+  scan_item: {
+    pk: string;
+    status: ScanItemStatus;
+    uploaded_at: string;
+  };
+}
