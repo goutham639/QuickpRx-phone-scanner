@@ -1,0 +1,154 @@
+import { useRef, useCallback, useState } from 'react';
+import type { LabelScanSessionStatus, LabelScanJoinResponse, LabelScanUploadResponse } from '../types';
+
+export interface UseLabelScanSession {
+  status: LabelScanSessionStatus;
+  sessionId: string | null;
+  error: string | null;
+  uploadCount: number;
+  join: (code: string) => Promise<boolean>;
+  upload: (imageBlob: Blob) => Promise<{ success: boolean; scanItemId?: string; error?: string }>;
+  disconnect: () => void;
+}
+
+// Environment configuration
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.quickprx.com';
+
+export function useLabelScanSession(): UseLabelScanSession {
+  const [status, setStatus] = useState<LabelScanSessionStatus>('idle');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [uploadCount, setUploadCount] = useState(0);
+
+  const tokenRef = useRef<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+
+  const join = useCallback(async (code: string): Promise<boolean> => {
+    setStatus('joining');
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/v1/label-scan/sessions/join`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pair_code: code }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to join. Please try again.';
+        try {
+          const errorData = await response.json();
+          if (typeof errorData.message === 'string') {
+            errorMessage = errorData.message;
+          } else if (typeof errorData.error === 'string') {
+            errorMessage = errorData.error;
+          } else if (response.status === 404) {
+            errorMessage = 'Invalid code. Please check and try again.';
+          } else if (response.status === 400) {
+            errorMessage = 'Code is required.';
+          }
+        } catch {
+          // JSON parse failed, use default message
+        }
+        setError(errorMessage);
+        setStatus('error');
+        return false;
+      }
+
+      const data = (await response.json()) as LabelScanJoinResponse;
+      setSessionId(data.session_id);
+      sessionIdRef.current = data.session_id;
+      tokenRef.current = data.token;
+      setUploadCount(0);
+      setStatus('active');
+      return true;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Network error. Please check your connection.';
+      setError(message);
+      setStatus('error');
+      return false;
+    }
+  }, []);
+
+  const upload = useCallback(
+    async (imageBlob: Blob): Promise<{ success: boolean; scanItemId?: string; error?: string }> => {
+      if (!sessionIdRef.current || !tokenRef.current) {
+        return { success: false, error: 'Not connected to a session' };
+      }
+
+      const previousStatus = status;
+      setStatus('uploading');
+
+      try {
+        const formData = new FormData();
+        formData.append('image', imageBlob);
+
+        const response = await fetch(
+          `${API_URL}/v1/label-scan/sessions/${sessionIdRef.current}/upload`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${tokenRef.current}`,
+            },
+            body: formData,
+          }
+        );
+
+        if (!response.ok) {
+          let errorMessage = 'Upload failed. Please try again.';
+          try {
+            const errorData = await response.json();
+            if (typeof errorData.message === 'string') {
+              errorMessage = errorData.message;
+            } else if (typeof errorData.error === 'string') {
+              errorMessage = errorData.error;
+            } else if (response.status === 401) {
+              errorMessage = 'Session expired. Please reconnect.';
+            } else if (response.status === 403) {
+              errorMessage = 'Invalid session token.';
+            } else if (response.status === 400) {
+              errorMessage = 'Upload failed. Please try again.';
+            }
+          } catch {
+            // JSON parse failed, use default message
+          }
+          setStatus(previousStatus === 'uploading' ? 'active' : previousStatus);
+          return { success: false, error: errorMessage };
+        }
+
+        const data = (await response.json()) as LabelScanUploadResponse;
+        setUploadCount((prev) => prev + 1);
+        setStatus('active');
+        return { success: true, scanItemId: data.scan_item.pk };
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Network error. Please check your connection.';
+        setStatus(previousStatus === 'uploading' ? 'active' : previousStatus);
+        return { success: false, error: message };
+      }
+    },
+    [status]
+  );
+
+  const disconnect = useCallback(() => {
+    setStatus('idle');
+    setSessionId(null);
+    setError(null);
+    setUploadCount(0);
+    tokenRef.current = null;
+    sessionIdRef.current = null;
+  }, []);
+
+  return {
+    status,
+    sessionId,
+    error,
+    uploadCount,
+    join,
+    upload,
+    disconnect,
+  };
+}
