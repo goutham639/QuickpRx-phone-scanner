@@ -29,15 +29,15 @@ None
 
 **Milestone Goal:** Add photo-based label scanning mode using REST API uploads for server-side OCR processing
 
-#### Phase 5: Label Scan API
+#### Phase 5: Label Scan API ✓
 
 **Goal**: REST API client for session join and photo upload endpoints
 **Depends on**: v1.0 complete
 **Research**: Unlikely (standard REST patterns)
-**Plans**: TBD
+**Plans**: 1/1 complete
 
 Plans:
-- [ ] 05-01: TBD (run /gsd:plan-phase 5 to break down)
+- [x] 05-01: Label Scan API client with useLabelScanSession hook — completed 2026-01-14
 
 #### Phase 6: Camera Capture
 
@@ -67,6 +67,6 @@ Plans:
 | 2. CI/CD Pipeline | v1.0 | 1/1 | Complete | 2026-01-11 |
 | 3. Infrastructure Integration | v1.0 | 1/1 | Complete | 2026-01-11 |
 | 4. Scan Submit Handler | v1.0 | 1/1 | Complete | 2026-01-12 |
-| 5. Label Scan API | v2.0 | 0/? | Not started | - |
+| 5. Label Scan API | v2.0 | 1/1 | Complete | 2026-01-14 |
 | 6. Camera Capture | v2.0 | 0/? | Not started | - |
 | 7. Label Scan UI | v2.0 | 0/? | Not started | - |
