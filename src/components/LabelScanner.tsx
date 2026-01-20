@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useLabelScanSession } from '../hooks/useLabelScanSession';
 import { useLabelCapture } from '../hooks/useLabelCapture';
+import { useBurstCapture } from '../hooks/useBurstCapture';
+import ImageQualityOverlay, { CaptureWarningModal } from './ImageQualityOverlay';
+import { IMAGE_CAPTURE_CONFIG } from '../config/imageCapture';
+import type { ImageQualityResult } from '../types/imageCapture';
 
 interface LabelScannerProps {
   onDisconnect: () => void;
@@ -22,15 +26,30 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
     videoRef,
     status: cameraStatus,
     error: cameraError,
+    previewQuality,
     start: startCamera,
     stop: stopCamera,
-    capture,
+    captureWithQuality,
   } = useLabelCapture();
+
+  const {
+    status: burstStatus,
+    framesCaptured,
+    captureBurst,
+    reset: resetBurst,
+  } = useBurstCapture();
 
   // Local state
   const [code, setCode] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [burstModeEnabled, setBurstModeEnabled] = useState<boolean>(IMAGE_CAPTURE_CONFIG.enableBurstMode);
+  const [showQualityWarning, setShowQualityWarning] = useState(false);
+  const [pendingCapture, setPendingCapture] = useState<{
+    blob: Blob;
+    quality: ImageQualityResult;
+  } | null>(null);
+  const [burstFeedback, setBurstFeedback] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto-focus input on mount (pair code entry state)
@@ -87,14 +106,20 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
     [code, sessionStatus, join]
   );
 
-  // Handle capture button
-  const handleCapture = useCallback(async () => {
-    const blob = await capture();
-    if (!blob) {
-      setUploadError('Failed to capture image. Please try again.');
-      return;
+  // Auto-dismiss burst feedback after 2 seconds
+  useEffect(() => {
+    if (burstFeedback) {
+      const timer = setTimeout(() => {
+        setBurstFeedback(null);
+      }, 2000);
+      return () => clearTimeout(timer);
     }
+  }, [burstFeedback]);
 
+  /**
+   * Process and upload a captured image
+   */
+  const processAndUpload = useCallback(async (blob: Blob) => {
     // Show success feedback immediately (optimistic)
     setShowSuccess(true);
 
@@ -113,7 +138,88 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
     setTimeout(() => {
       setShowSuccess(false);
     }, 500);
-  }, [capture, upload]);
+  }, [upload]);
+
+  /**
+   * Handle quality warning confirmation
+   */
+  const handleQualityWarningConfirm = useCallback(async () => {
+    if (pendingCapture) {
+      await processAndUpload(pendingCapture.blob);
+    }
+    setShowQualityWarning(false);
+    setPendingCapture(null);
+  }, [pendingCapture, processAndUpload]);
+
+  /**
+   * Handle quality warning cancel
+   */
+  const handleQualityWarningCancel = useCallback(() => {
+    setShowQualityWarning(false);
+    setPendingCapture(null);
+  }, []);
+
+  // Handle capture button
+  const handleCapture = useCallback(async () => {
+    // Get video element for burst capture
+    const video = videoRef.current;
+    if (!video) {
+      setUploadError('Camera not available');
+      return;
+    }
+
+    let capturedBlob: Blob | null = null;
+    let capturedQuality: ImageQualityResult | null = null;
+
+    // Burst mode: capture multiple frames and select best
+    if (burstModeEnabled && IMAGE_CAPTURE_CONFIG.enableBurstMode) {
+      resetBurst();
+      const burstResult = await captureBurst(video);
+
+      if (!burstResult) {
+        setUploadError('Failed to capture image. Please try again.');
+        return;
+      }
+
+      capturedBlob = burstResult.bestFrame;
+      setBurstFeedback(`Selected frame ${burstResult.bestFrameIndex + 1}/${burstResult.frames.length}`);
+
+      // Analyze quality of selected frame
+      const { quality } = await captureWithQuality();
+      capturedQuality = quality;
+    } else {
+      // Single capture with quality analysis
+      const result = await captureWithQuality();
+      capturedBlob = result.blob;
+      capturedQuality = result.quality;
+    }
+
+    if (!capturedBlob) {
+      setUploadError('Failed to capture image. Please try again.');
+      return;
+    }
+
+    // Check quality and show warning if poor
+    if (
+      capturedQuality &&
+      capturedQuality.overallQuality === 'poor' &&
+      IMAGE_CAPTURE_CONFIG.enableQualityChecks
+    ) {
+      setPendingCapture({ blob: capturedBlob, quality: capturedQuality });
+      setShowQualityWarning(true);
+      return;
+    }
+
+    // Process and upload
+    await processAndUpload(capturedBlob);
+  }, [
+    videoRef,
+    burstModeEnabled,
+    captureBurst,
+    captureWithQuality,
+    resetBurst,
+    processAndUpload,
+  ]);
 
   // Handle disconnect
   const handleDisconnect = useCallback(() => {
@@ -235,9 +341,20 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
     );
   }
 
+  const isBurstCapturing = burstStatus === 'capturing' || burstStatus === 'analyzing';
+
   // State 2 & 3: Camera active with upload feedback
   return (
     <div className="h-screen flex flex-col bg-black">
+      {/* Quality Warning Modal */}
+      {showQualityWarning && pendingCapture && (
+        <CaptureWarningModal
+          quality={pendingCapture.quality}
+          onConfirm={handleQualityWarningConfirm}
+          onCancel={handleQualityWarningCancel}
+        />
+      )}
+
       {/* Success Feedback Overlay */}
       {showSuccess && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-green-500/80 transition-opacity duration-200">
@@ -257,6 +374,42 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
             </svg>
           </div>
           <p className="text-white font-semibold text-lg">Photo Uploaded</p>
+          {burstFeedback && (
+            <p className="text-white/80 text-sm mt-2">{burstFeedback}</p>
+          )}
+        </div>
+      )}
+
+      {/* Burst Mode Feedback Overlay */}
+      {isBurstCapturing && (
+        <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/60">
+          <div className="flex flex-col items-center">
+            <svg
+              className="animate-spin h-12 w-12 text-blue-400 mb-3"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <p className="text-white font-medium">
+              {burstStatus === 'capturing'
+                ? `Capturing... ${framesCaptured}/${IMAGE_CAPTURE_CONFIG.burstFrameCount}`
+                : 'Analyzing sharpness...'}
+            </p>
+          </div>
         </div>
       )}
 
@@ -347,6 +500,14 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
           </div>
         )}
 
+        {/* Image Quality Overlay */}
+        {isCameraActive && !cameraError && IMAGE_CAPTURE_CONFIG.enableQualityChecks && (
+          <ImageQualityOverlay
+            quality={previewQuality.result}
+            isChecking={previewQuality.status === 'checking'}
+          />
+        )}
+
         {/* Camera active guide */}
         {isCameraActive && !cameraError && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -402,15 +563,43 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
 
       {/* Bottom Bar */}
       <div className="safe-bottom bg-black/80 backdrop-blur px-4 py-4">
-        {/* Mode indicator */}
-        <div className="mb-4 text-center">
+        {/* Mode and Burst Toggle Row */}
+        <div className="mb-4 flex items-center justify-between">
           <span className="text-gray-400 text-sm">Mode: Label Scan</span>
+
+          {/* Burst Mode Toggle */}
+          {IMAGE_CAPTURE_CONFIG.enableBurstMode && (
+            <button
+              onClick={() => setBurstModeEnabled((prev) => !prev)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                burstModeEnabled
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300'
+              }`}
+            >
+              {/* Burst icon */}
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                />
+              </svg>
+              Burst {burstModeEnabled ? 'On' : 'Off'}
+            </button>
+          )}
         </div>
 
         {/* Capture Button */}
         <button
           onClick={handleCapture}
-          disabled={!isCameraActive || isUploading}
+          disabled={!isCameraActive || isUploading || isBurstCapturing}
           className="w-full py-5 rounded-xl font-semibold text-white
                    bg-blue-600 hover:bg-blue-700 active:bg-blue-800
                    disabled:bg-gray-600 disabled:cursor-not-allowed
@@ -436,10 +625,10 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
               d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
             />
           </svg>
-          Capture Label
+          {burstModeEnabled ? 'Capture Burst' : 'Capture Label'}
         </button>
 
-        {/* Mode switch placeholder (for Plan 02) */}
+        {/* Mode switch */}
         <button
           onClick={onModeSwitch}
           className="w-full mt-3 py-3 rounded-xl font-medium text-gray-300

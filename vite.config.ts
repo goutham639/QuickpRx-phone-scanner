@@ -3,6 +3,23 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  // Worker bundling configuration
+  worker: {
+    format: 'es',
+  },
+  build: {
+    // Ensure workers are properly bundled
+    rollupOptions: {
+      output: {
+        // Keep worker chunks separate for better caching
+        manualChunks: (id) => {
+          if (id.includes('worker')) {
+            return undefined; // Let Vite handle workers automatically
+          }
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
