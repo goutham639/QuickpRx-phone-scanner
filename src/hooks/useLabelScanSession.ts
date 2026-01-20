@@ -1,5 +1,6 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import type { LabelScanSessionStatus, LabelScanJoinResponse, LabelScanUploadResponse } from '../types';
+import { saveSession, getSession, deleteSession } from '../utils/sessionStorage';
 
 export interface UseLabelScanSession {
   status: LabelScanSessionStatus;
@@ -9,19 +10,36 @@ export interface UseLabelScanSession {
   join: (code: string) => Promise<boolean>;
   upload: (imageBlob: Blob) => Promise<{ success: boolean; scanItemId?: string; error?: string }>;
   disconnect: () => void;
+  /** Try to restore a previous session */
+  restoreSession: () => Promise<boolean>;
+  /** Whether a stored session exists */
+  hasStoredSession: boolean;
 }
 
 // Environment configuration
 const API_URL = import.meta.env.VITE_API_URL || 'https://api.quickprx.com';
+
+// Session validity duration (30 minutes by default)
+const SESSION_VALIDITY_MS = 30 * 60 * 1000;
 
 export function useLabelScanSession(): UseLabelScanSession {
   const [status, setStatus] = useState<LabelScanSessionStatus>('idle');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadCount, setUploadCount] = useState(0);
+  const [hasStoredSession, setHasStoredSession] = useState(false);
 
   const tokenRef = useRef<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+
+  // Check for stored session on mount
+  useEffect(() => {
+    const checkStoredSession = async () => {
+      const stored = await getSession('label');
+      setHasStoredSession(stored !== null);
+    };
+    checkStoredSession();
+  }, []);
 
   const join = useCallback(async (code: string): Promise<boolean> => {
     setStatus('joining');
@@ -63,6 +81,18 @@ export function useLabelScanSession(): UseLabelScanSession {
       tokenRef.current = data.token;
       setUploadCount(0);
       setStatus('active');
+
+      // Save session for recovery
+      await saveSession({
+        id: 'label',
+        sessionId: data.session_id,
+        token: data.token,
+        expiresAt: Date.now() + SESSION_VALIDITY_MS,
+        createdAt: Date.now(),
+        pairCode: code,
+      });
+      setHasStoredSession(true);
+
       return true;
     } catch (err) {
       const message =
@@ -133,13 +163,38 @@ export function useLabelScanSession(): UseLabelScanSession {
     [status]
   );
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
     setStatus('idle');
     setSessionId(null);
     setError(null);
     setUploadCount(0);
     tokenRef.current = null;
     sessionIdRef.current = null;
+
+    // Clear stored session
+    await deleteSession('label');
+    setHasStoredSession(false);
+  }, []);
+
+  /**
+   * Restore a previous session from storage
+   */
+  const restoreSession = useCallback(async (): Promise<boolean> => {
+    const stored = await getSession('label');
+
+    if (!stored) {
+      setHasStoredSession(false);
+      return false;
+    }
+
+    // Session found, restore it
+    setSessionId(stored.sessionId);
+    sessionIdRef.current = stored.sessionId;
+    tokenRef.current = stored.token;
+    setStatus('active');
+    setError(null);
+
+    return true;
   }, []);
 
   return {
@@ -150,5 +205,7 @@ export function useLabelScanSession(): UseLabelScanSession {
     join,
     upload,
     disconnect,
+    restoreSession,
+    hasStoredSession,
   };
 }

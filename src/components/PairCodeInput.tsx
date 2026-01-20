@@ -40,29 +40,31 @@ export default function PairCodeInput({ onPair, isLoading, error }: PairCodeInpu
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom">
+    <main className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom" role="main">
       {/* QuickPRx Branding */}
-      <div className="mb-8 text-center">
+      <header className="mb-8 text-center">
         <h1 className="text-3xl font-bold text-blue-800 dark:text-blue-400">
           QuickPRx
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Pharmacy Scanner
         </p>
-      </div>
+      </header>
 
       {/* Main Card */}
-      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-        <h2 className="text-xl font-semibold text-center text-gray-800 dark:text-gray-100 mb-2">
+      <section className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6" aria-labelledby="pair-heading">
+        <h2 id="pair-heading" className="text-xl font-semibold text-center text-gray-800 dark:text-gray-100 mb-2">
           Scan to Portal
         </h2>
         <p className="text-center text-gray-500 dark:text-gray-400 text-sm mb-6">
           Enter the 6-digit code shown on your portal
         </p>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} aria-label="Pairing code form">
           {/* Code Input */}
+          <label htmlFor="barcode-pair-code" className="sr-only">6-digit pairing code</label>
           <input
+            id="barcode-pair-code"
             ref={inputRef}
             type="text"
             inputMode="numeric"
@@ -80,11 +82,13 @@ export default function PairCodeInput({ onPair, isLoading, error }: PairCodeInpu
                      disabled:opacity-50 disabled:cursor-not-allowed
                      transition-all"
             autoComplete="one-time-code"
+            aria-describedby={error ? 'barcode-pair-error' : undefined}
+            aria-invalid={error ? 'true' : 'false'}
           />
 
           {/* Error Message */}
           {error && (
-            <p className="mt-4 text-center text-red-500 dark:text-red-400 text-sm">
+            <p id="barcode-pair-error" className="mt-4 text-center text-red-500 dark:text-red-400 text-sm" role="alert">
               {error}
             </p>
           )}
@@ -96,7 +100,9 @@ export default function PairCodeInput({ onPair, isLoading, error }: PairCodeInpu
             className="w-full mt-6 py-4 px-6 rounded-xl font-semibold text-white
                      bg-blue-600 hover:bg-blue-700 active:bg-blue-800
                      disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed
-                     transition-colors flex items-center justify-center gap-2"
+                     transition-colors flex items-center justify-center gap-2
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            aria-busy={isLoading}
           >
             {isLoading ? (
               <>
@@ -105,6 +111,7 @@ export default function PairCodeInput({ onPair, isLoading, error }: PairCodeInpu
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
+                  aria-hidden="true"
                 >
                   <circle
                     className="opacity-25"
@@ -127,12 +134,12 @@ export default function PairCodeInput({ onPair, isLoading, error }: PairCodeInpu
             )}
           </button>
         </form>
-      </div>
+      </section>
 
       {/* Instructions */}
-      <p className="mt-8 text-center text-gray-400 dark:text-gray-500 text-xs max-w-xs">
+      <footer className="mt-8 text-center text-gray-400 dark:text-gray-500 text-xs max-w-xs">
         Open your QuickPRx Portal, go to Scan Labels, and look for the pairing code
-      </p>
-    </div>
+      </footer>
+    </main>
   );
 }

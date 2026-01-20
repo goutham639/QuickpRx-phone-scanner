@@ -6,6 +6,7 @@
 import { useRef, useCallback, useState } from 'react';
 import { IMAGE_CAPTURE_CONFIG } from '../config/imageCapture';
 import { calculateBlurScore } from '../utils/imageAnalysis';
+import { compressImage } from '../utils/imageCompression';
 import type { BurstCaptureResult } from '../types/imageCapture';
 
 export type BurstCaptureStatus = 'idle' | 'capturing' | 'analyzing' | 'complete';
@@ -146,7 +147,6 @@ export function useBurstCapture(): UseBurstCapture {
         }
 
         setBestFrameIndex(bestIdx);
-        setStatus('complete');
 
         const bestFrame = frames[bestIdx];
         if (!bestFrame) {
@@ -154,11 +154,25 @@ export function useBurstCapture(): UseBurstCapture {
           return null;
         }
 
+        // Compress the best frame if enabled
+        let compressedBestFrame = bestFrame;
+        if (IMAGE_CAPTURE_CONFIG.enableCompression) {
+          try {
+            const result = await compressImage(bestFrame);
+            compressedBestFrame = result.blob;
+          } catch {
+            // Use uncompressed frame if compression fails
+            compressedBestFrame = bestFrame;
+          }
+        }
+
+        setStatus('complete');
+
         return {
           frames,
           scores,
           bestFrameIndex: bestIdx,
-          bestFrame,
+          bestFrame: compressedBestFrame,
         };
       } catch (error) {
         console.error('Burst capture error:', error);

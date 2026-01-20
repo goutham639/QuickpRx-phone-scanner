@@ -116,6 +116,13 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
     }
   }, [burstFeedback]);
 
+  // Handle disconnect - defined early to avoid circular dependency
+  const handleDisconnect = useCallback(() => {
+    stopCamera();
+    disconnect();
+    onDisconnect();
+  }, [stopCamera, disconnect, onDisconnect]);
+
   /**
    * Process and upload a captured image
    */
@@ -131,14 +138,27 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
     // Upload the image
     const result = await upload(blob);
     if (!result.success) {
-      setUploadError(result.error || 'Upload failed');
+      const errorMessage = result.error || 'Upload failed';
+
+      // Check for session expiration
+      if (errorMessage.toLowerCase().includes('expired') ||
+          errorMessage.toLowerCase().includes('session') ||
+          errorMessage.includes('401')) {
+        setUploadError('Session expired. Please reconnect.');
+        // Disconnect after a short delay to let the user see the message
+        setTimeout(() => {
+          handleDisconnect();
+        }, 2000);
+      } else {
+        setUploadError(errorMessage);
+      }
     }
 
     // Hide success feedback after 500ms
     setTimeout(() => {
       setShowSuccess(false);
     }, 500);
-  }, [upload]);
+  }, [upload, handleDisconnect]);
 
   /**
    * Handle quality warning confirmation
@@ -182,7 +202,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
       }
 
       capturedBlob = burstResult.bestFrame;
-      setBurstFeedback(`Selected frame ${burstResult.bestFrameIndex + 1}/${burstResult.frames.length}`);
+      setBurstFeedback('Best shot selected');
 
       // Analyze quality of selected frame
       const { quality } = await captureWithQuality();
@@ -221,13 +241,6 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
     processAndUpload,
   ]);
 
-  // Handle disconnect
-  const handleDisconnect = useCallback(() => {
-    stopCamera();
-    disconnect();
-    onDisconnect();
-  }, [stopCamera, disconnect, onDisconnect]);
-
   const isJoining = sessionStatus === 'joining';
   const isConnected = sessionStatus === 'active' || sessionStatus === 'uploading';
   const isCameraActive = cameraStatus === 'active' || cameraStatus === 'capturing';
@@ -236,29 +249,31 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
   // State 1: Pair code entry (no sessionId)
   if (!sessionId) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom">
+      <main className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom" role="main">
         {/* QuickPRx Branding */}
-        <div className="mb-8 text-center">
+        <header className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-blue-800 dark:text-blue-400">
             QuickPRx
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Label Scanner
           </p>
-        </div>
+        </header>
 
         {/* Main Card */}
-        <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-center text-gray-800 dark:text-gray-100 mb-2">
+        <section className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6" aria-labelledby="scan-labels-heading">
+          <h2 id="scan-labels-heading" className="text-xl font-semibold text-center text-gray-800 dark:text-gray-100 mb-2">
             Scan Labels
           </h2>
           <p className="text-center text-gray-500 dark:text-gray-400 text-sm mb-6">
             Enter the 6-digit code shown on your portal
           </p>
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} aria-label="Pairing code form">
             {/* Code Input */}
+            <label htmlFor="pair-code" className="sr-only">6-digit pairing code</label>
             <input
+              id="pair-code"
               ref={inputRef}
               type="text"
               inputMode="numeric"
@@ -276,11 +291,13 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
                        disabled:opacity-50 disabled:cursor-not-allowed
                        transition-all"
               autoComplete="one-time-code"
+              aria-describedby={sessionError ? 'pair-error' : undefined}
+              aria-invalid={sessionError ? 'true' : 'false'}
             />
 
             {/* Error Message */}
             {sessionError && (
-              <p className="mt-4 text-center text-red-500 dark:text-red-400 text-sm">
+              <p id="pair-error" className="mt-4 text-center text-red-500 dark:text-red-400 text-sm" role="alert">
                 {sessionError}
               </p>
             )}
@@ -292,7 +309,9 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
               className="w-full mt-6 py-4 px-6 rounded-xl font-semibold text-white
                        bg-blue-600 hover:bg-blue-700 active:bg-blue-800
                        disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed
-                       transition-colors flex items-center justify-center gap-2"
+                       transition-colors flex items-center justify-center gap-2
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              aria-busy={isJoining}
             >
               {isJoining ? (
                 <>
@@ -301,6 +320,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
+                    aria-hidden="true"
                   >
                     <circle
                       className="opacity-25"
@@ -323,21 +343,22 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
               )}
             </button>
           </form>
-        </div>
+        </section>
 
         {/* Mode Switch Link */}
         <button
           onClick={onModeSwitch}
-          className="mt-6 text-blue-600 dark:text-blue-400 text-sm hover:underline"
+          className="mt-6 text-blue-600 dark:text-blue-400 text-sm hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded"
+          aria-label="Switch to barcode scanning mode"
         >
           Switch to Barcode Scan
         </button>
 
         {/* Instructions */}
-        <p className="mt-4 text-center text-gray-400 dark:text-gray-500 text-xs max-w-xs">
+        <footer className="mt-4 text-center text-gray-400 dark:text-gray-500 text-xs max-w-xs">
           Open your QuickPRx Portal, go to Scan Labels, and look for the pairing code
-        </p>
-      </div>
+        </footer>
+      </main>
     );
   }
 
@@ -345,7 +366,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
 
   // State 2 & 3: Camera active with upload feedback
   return (
-    <div className="h-screen flex flex-col bg-black">
+    <main className="h-screen flex flex-col bg-black" role="main" aria-label="Label Scanner">
       {/* Quality Warning Modal */}
       {showQualityWarning && pendingCapture && (
         <CaptureWarningModal
@@ -357,8 +378,12 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
 
       {/* Success Feedback Overlay */}
       {showSuccess && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-green-500/80 transition-opacity duration-200">
-          <div className="bg-white rounded-full p-4 mb-4 shadow-lg">
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-green-500/80 transition-opacity duration-200"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="bg-white rounded-full p-4 mb-4 shadow-lg" aria-hidden="true">
             <svg
               className="w-16 h-16 text-green-500"
               fill="none"
@@ -382,13 +407,14 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
 
       {/* Burst Mode Feedback Overlay */}
       {isBurstCapturing && (
-        <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/60" role="status" aria-live="polite">
           <div className="flex flex-col items-center">
             <svg
               className="animate-spin h-12 w-12 text-blue-400 mb-3"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <circle
                 className="opacity-25"
@@ -407,7 +433,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
             <p className="text-white font-medium">
               {burstStatus === 'capturing'
                 ? `Capturing... ${framesCaptured}/${IMAGE_CAPTURE_CONFIG.burstFrameCount}`
-                : 'Analyzing sharpness...'}
+                : 'Selecting best shot...'}
             </p>
           </div>
         </div>
@@ -415,7 +441,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
 
       {/* Upload Error Toast */}
       {uploadError && (
-        <div className="absolute top-0 left-0 right-0 z-50 safe-top">
+        <div className="absolute top-0 left-0 right-0 z-50 safe-top" role="alert" aria-live="assertive">
           <div className="bg-red-600 text-white px-4 py-3 text-center text-sm font-medium">
             {uploadError}
           </div>
@@ -423,13 +449,14 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
       )}
 
       {/* Header Bar */}
-      <div className="safe-top bg-black/80 backdrop-blur flex items-center justify-between px-4 py-3">
+      <header className="safe-top bg-black/80 backdrop-blur flex items-center justify-between px-4 py-3">
         {/* Connection Status */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" role="status" aria-live="polite">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
               isConnected ? 'bg-green-500' : 'bg-red-500'
             }`}
+            aria-hidden="true"
           />
           <span className="text-white text-sm">
             {isConnected ? 'Connected' : 'Reconnecting...'}
@@ -437,21 +464,26 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
         </div>
 
         {/* Upload Count Badge */}
-        <div className="bg-blue-600 text-white text-sm font-semibold px-3 py-1 rounded-full">
+        <div
+          className="bg-blue-600 text-white text-sm font-semibold px-3 py-1 rounded-full"
+          role="status"
+          aria-label={`${uploadCount} ${uploadCount === 1 ? 'upload' : 'uploads'} completed`}
+        >
           {uploadCount} {uploadCount === 1 ? 'upload' : 'uploads'}
         </div>
 
         {/* Disconnect Button */}
         <button
           onClick={handleDisconnect}
-          className="text-white p-2 hover:bg-white/10 rounded-full transition-colors"
-          aria-label="Disconnect"
+          className="text-white p-2 hover:bg-white/10 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black"
+          aria-label="Disconnect from label scanner session"
         >
           <svg
             className="w-6 h-6"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -461,10 +493,10 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
             />
           </svg>
         </button>
-      </div>
+      </header>
 
       {/* Camera View */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden" role="region" aria-label="Camera viewfinder">
         {/* Video Element */}
         <video
           ref={videoRef as React.RefObject<HTMLVideoElement>}
@@ -472,16 +504,18 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
           playsInline
           muted
           autoPlay
+          aria-label="Camera feed for label scanning"
         />
 
         {/* Camera Error State */}
         {cameraError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6" role="alert">
             <svg
               className="w-16 h-16 text-red-500 mb-4"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -493,7 +527,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
             <p className="text-white text-center text-lg mb-4">{cameraError}</p>
             <button
               onClick={startCamera}
-              className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold"
+              className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-black"
             >
               Try Again
             </button>
@@ -510,7 +544,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
 
         {/* Camera active guide */}
         {isCameraActive && !cameraError && (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
             {/* Frame overlay for label positioning */}
             <div className="relative w-80 h-56 border-2 border-white/50 rounded-lg">
               {/* Corner brackets */}
@@ -525,7 +559,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
         {/* Instruction Text */}
         {isCameraActive && !cameraError && (
           <div className="absolute top-1/2 left-0 right-0 mt-36 text-center">
-            <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full">
+            <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full" role="status">
               Position label within frame
             </p>
           </div>
@@ -533,13 +567,14 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
 
         {/* Uploading indicator */}
         {isUploading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50" role="status" aria-live="polite">
             <div className="flex flex-col items-center">
               <svg
                 className="animate-spin h-12 w-12 text-white mb-2"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <circle
                   className="opacity-25"
@@ -562,7 +597,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
       </div>
 
       {/* Bottom Bar */}
-      <div className="safe-bottom bg-black/80 backdrop-blur px-4 py-4">
+      <footer className="safe-bottom bg-black/80 backdrop-blur px-4 py-4">
         {/* Mode and Burst Toggle Row */}
         <div className="mb-4 flex items-center justify-between">
           <span className="text-gray-400 text-sm">Mode: Label Scan</span>
@@ -571,11 +606,13 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
           {IMAGE_CAPTURE_CONFIG.enableBurstMode && (
             <button
               onClick={() => setBurstModeEnabled((prev) => !prev)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 ${
                 burstModeEnabled
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700 text-gray-300'
               }`}
+              aria-pressed={burstModeEnabled}
+              aria-label={`Burst mode ${burstModeEnabled ? 'enabled' : 'disabled'}. Captures multiple frames and selects the sharpest.`}
             >
               {/* Burst icon */}
               <svg
@@ -584,6 +621,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
                 viewBox="0 0 24 24"
                 stroke="currentColor"
                 strokeWidth={2}
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -603,7 +641,9 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
           className="w-full py-5 rounded-xl font-semibold text-white
                    bg-blue-600 hover:bg-blue-700 active:bg-blue-800
                    disabled:bg-gray-600 disabled:cursor-not-allowed
-                   transition-colors flex items-center justify-center gap-3"
+                   transition-colors flex items-center justify-center gap-3
+                   focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-black"
+          aria-label={burstModeEnabled ? 'Capture burst of photos' : 'Capture label photo'}
         >
           {/* Camera icon */}
           <svg
@@ -611,6 +651,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -632,11 +673,13 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
         <button
           onClick={onModeSwitch}
           className="w-full mt-3 py-3 rounded-xl font-medium text-gray-300
-                   bg-gray-700 hover:bg-gray-600 transition-colors"
+                   bg-gray-700 hover:bg-gray-600 transition-colors
+                   focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 focus:ring-offset-black"
+          aria-label="Switch to barcode scanning mode"
         >
           Switch to Barcode Scan
         </button>
-      </div>
-    </div>
+      </footer>
+    </main>
   );
 }

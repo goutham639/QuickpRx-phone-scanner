@@ -10,6 +10,22 @@ export const IMAGE_CAPTURE_CONFIG = {
   enablePerspectiveCorrection: false,
   enableAutoRotate: false,
 
+  // Image compression settings
+  /** Enable image compression before upload */
+  enableCompression: true,
+  /** Target file size in bytes (300KB default) */
+  targetFileSizeBytes: 300 * 1024,
+  /** Maximum width for resized images */
+  maxImageWidth: 1920,
+  /** Maximum height for resized images */
+  maxImageHeight: 1440,
+  /** Initial JPEG quality (0-1) */
+  initialJpegQuality: 0.85,
+  /** Minimum JPEG quality to maintain readability */
+  minJpegQuality: 0.5,
+  /** Quality reduction step when iterating */
+  qualityStep: 0.1,
+
   // Quality thresholds
   /** Minimum blur score (Laplacian variance) - below this is considered blurry */
   minBlurScore: 30,

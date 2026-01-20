@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import type { SessionStatus, PairResponse, WebSocketMessage } from '../types';
+import { saveSession, getSession, deleteSession } from '../utils/sessionStorage';
 
 export interface UseScannerSession {
   status: SessionStatus;
@@ -11,6 +12,10 @@ export interface UseScannerSession {
   sendScan: (barcode: string) => void;
   disconnect: () => void;
   clearScanError: () => void;
+  /** Try to restore a previous session */
+  restoreSession: () => Promise<boolean>;
+  /** Whether a stored session exists */
+  hasStoredSession: boolean;
 }
 
 // Environment configuration
@@ -20,12 +25,16 @@ const WS_URL = API_URL.replace(/^http/, 'ws');
 const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
+// Session validity duration (30 minutes by default)
+const SESSION_VALIDITY_MS = 30 * 60 * 1000;
+
 export function useScannerSession(): UseScannerSession {
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastScanError, setLastScanError] = useState<string | null>(null);
   const [scanCount, setScanCount] = useState(0);
+  const [hasStoredSession, setHasStoredSession] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptRef = useRef(0);
@@ -38,6 +47,15 @@ export function useScannerSession(): UseScannerSession {
   useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
+
+  // Check for stored session on mount
+  useEffect(() => {
+    const checkStoredSession = async () => {
+      const stored = await getSession('barcode');
+      setHasStoredSession(stored !== null);
+    };
+    checkStoredSession();
+  }, []);
 
   const connectWebSocket = useCallback((token: string) => {
     // Close existing connection
@@ -161,6 +179,17 @@ export function useScannerSession(): UseScannerSession {
         setScanCount(0);
         pendingScansRef.current = [];
 
+        // Save session for recovery
+        await saveSession({
+          id: 'barcode',
+          sessionId: data.session_id,
+          token: data.token,
+          expiresAt: Date.now() + SESSION_VALIDITY_MS,
+          createdAt: Date.now(),
+          pairCode: code,
+        });
+        setHasStoredSession(true);
+
         // Connect WebSocket with token
         connectWebSocket(data.token);
         return true;
@@ -193,7 +222,7 @@ export function useScannerSession(): UseScannerSession {
     setScanCount((prev) => prev + 1);
   }, []);
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
     // Clear reconnect timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -214,7 +243,35 @@ export function useScannerSession(): UseScannerSession {
     reconnectAttemptRef.current = 0;
     pendingScansRef.current = [];
     tokenRef.current = null;
+
+    // Clear stored session
+    await deleteSession('barcode');
+    setHasStoredSession(false);
   }, []);
+
+  /**
+   * Restore a previous session from storage
+   */
+  const restoreSession = useCallback(async (): Promise<boolean> => {
+    const stored = await getSession('barcode');
+
+    if (!stored) {
+      setHasStoredSession(false);
+      return false;
+    }
+
+    // Session found, restore it
+    setSessionId(stored.sessionId);
+    tokenRef.current = stored.token;
+    setScanCount(0);
+    pendingScansRef.current = [];
+    setError(null);
+
+    // Reconnect WebSocket
+    connectWebSocket(stored.token);
+
+    return true;
+  }, [connectWebSocket]);
 
   const clearScanError = useCallback(() => {
     setLastScanError(null);
@@ -242,5 +299,7 @@ export function useScannerSession(): UseScannerSession {
     sendScan,
     disconnect,
     clearScanError,
+    restoreSession,
+    hasStoredSession,
   };
 }

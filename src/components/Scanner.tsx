@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import type { SessionStatus } from '../types';
 import ScanFeedback from './ScanFeedback';
@@ -12,6 +12,9 @@ interface ScannerProps {
   onClearScanError: () => void;
 }
 
+// Time in ms before showing "having trouble" hint
+const DETECTION_HINT_DELAY = 15000;
+
 export default function Scanner({
   status,
   scanCount,
@@ -23,10 +26,26 @@ export default function Scanner({
   const [isPaused, setIsPaused] = useState(false);
   const [lastBarcode, setLastBarcode] = useState<string | null>(null);
   const [feedbackBarcode, setFeedbackBarcode] = useState<string | null>(null);
+  const [showDetectionHint, setShowDetectionHint] = useState(false);
+  const detectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset detection hint timer
+  const resetDetectionTimer = useCallback(() => {
+    setShowDetectionHint(false);
+    if (detectionTimerRef.current) {
+      clearTimeout(detectionTimerRef.current);
+    }
+    detectionTimerRef.current = setTimeout(() => {
+      setShowDetectionHint(true);
+    }, DETECTION_HINT_DELAY);
+  }, []);
 
   const handleScan = useCallback(
     (barcode: string) => {
       if (isPaused) return;
+
+      // Reset the detection hint timer since we got a successful scan
+      resetDetectionTimer();
 
       // Send to session
       onScan(barcode);
@@ -40,7 +59,7 @@ export default function Scanner({
         navigator.vibrate(100);
       }
     },
-    [onScan, isPaused]
+    [onScan, isPaused, resetDetectionTimer]
   );
 
   const { videoRef, isActive, error, start, stop } = useBarcodeScanner(handleScan);
@@ -61,6 +80,26 @@ export default function Scanner({
     return () => stop();
   }, [start, stop]);
 
+  // Start detection hint timer when camera becomes active
+  useEffect(() => {
+    if (isActive && !isPaused) {
+      resetDetectionTimer();
+    } else {
+      // Clear timer when paused or not active
+      if (detectionTimerRef.current) {
+        clearTimeout(detectionTimerRef.current);
+        detectionTimerRef.current = null;
+      }
+      setShowDetectionHint(false);
+    }
+
+    return () => {
+      if (detectionTimerRef.current) {
+        clearTimeout(detectionTimerRef.current);
+      }
+    };
+  }, [isActive, isPaused, resetDetectionTimer]);
+
   const handlePauseResume = useCallback(() => {
     if (isPaused) {
       start();
@@ -78,13 +117,13 @@ export default function Scanner({
   const isConnected = status === 'paired' || status === 'scanning';
 
   return (
-    <div className="h-screen flex flex-col bg-black">
+    <main className="h-screen flex flex-col bg-black" role="main" aria-label="Barcode Scanner">
       {/* Scan Feedback Overlay */}
       <ScanFeedback barcode={feedbackBarcode} onComplete={handleFeedbackComplete} />
 
       {/* Scan Error Toast */}
       {scanError && (
-        <div className="absolute top-0 left-0 right-0 z-50 safe-top">
+        <div className="absolute top-0 left-0 right-0 z-50 safe-top" role="alert" aria-live="assertive">
           <div className="bg-red-600 text-white px-4 py-3 text-center text-sm font-medium">
             {scanError}
           </div>
@@ -92,13 +131,14 @@ export default function Scanner({
       )}
 
       {/* Header Bar */}
-      <div className="safe-top bg-black/80 backdrop-blur flex items-center justify-between px-4 py-3">
+      <header className="safe-top bg-black/80 backdrop-blur flex items-center justify-between px-4 py-3">
         {/* Connection Status */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" role="status" aria-live="polite">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
               isConnected ? 'bg-green-500' : 'bg-red-500'
             }`}
+            aria-hidden="true"
           />
           <span className="text-white text-sm">
             {isConnected ? 'Connected' : 'Reconnecting...'}
@@ -106,21 +146,26 @@ export default function Scanner({
         </div>
 
         {/* Scan Count Badge */}
-        <div className="bg-blue-600 text-white text-sm font-semibold px-3 py-1 rounded-full">
+        <div
+          className="bg-blue-600 text-white text-sm font-semibold px-3 py-1 rounded-full"
+          role="status"
+          aria-label={`${scanCount} ${scanCount === 1 ? 'scan' : 'scans'} completed`}
+        >
           {scanCount} {scanCount === 1 ? 'scan' : 'scans'}
         </div>
 
         {/* Disconnect Button */}
         <button
           onClick={onDisconnect}
-          className="text-white p-2 hover:bg-white/10 rounded-full transition-colors"
-          aria-label="Disconnect"
+          className="text-white p-2 hover:bg-white/10 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black"
+          aria-label="Disconnect from scanner session"
         >
           <svg
             className="w-6 h-6"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -130,10 +175,10 @@ export default function Scanner({
             />
           </svg>
         </button>
-      </div>
+      </header>
 
       {/* Camera View */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden" role="region" aria-label="Camera viewfinder">
         {/* Video Element */}
         <video
           ref={videoRef as React.RefObject<HTMLVideoElement>}
@@ -141,16 +186,18 @@ export default function Scanner({
           playsInline
           muted
           autoPlay
+          aria-label="Camera feed for barcode scanning"
         />
 
         {/* Error State */}
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6" role="alert">
             <svg
               className="w-16 h-16 text-red-500 mb-4"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -162,7 +209,7 @@ export default function Scanner({
             <p className="text-white text-center text-lg mb-4">{error}</p>
             <button
               onClick={start}
-              className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold"
+              className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-black"
             >
               Try Again
             </button>
@@ -173,7 +220,7 @@ export default function Scanner({
         {isActive && !error && (
           <>
             {/* Darkened corners */}
-            <div className="absolute inset-0">
+            <div className="absolute inset-0" aria-hidden="true">
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="relative w-72 h-48">
                   {/* Corner brackets */}
@@ -186,14 +233,19 @@ export default function Scanner({
             </div>
 
             {/* Instruction Text */}
-            <div className="absolute top-1/2 left-0 right-0 mt-32 text-center">
-              <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full">
+            <div className="absolute top-1/2 left-0 right-0 mt-32 text-center space-y-2">
+              <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full" role="status">
                 Point camera at barcode
               </p>
+              {showDetectionHint && (
+                <p className="text-yellow-300 text-xs bg-black/60 inline-block px-4 py-2 rounded-full animate-pulse" role="alert">
+                  Having trouble? Make sure barcode is well-lit and in focus
+                </p>
+              )}
             </div>
 
             {/* Scanning line animation */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
               <div className="w-72 h-48 overflow-hidden relative">
                 <div className="absolute inset-x-0 h-0.5 bg-red-500 shadow-lg shadow-red-500/50 animate-scan" />
               </div>
@@ -203,16 +255,16 @@ export default function Scanner({
 
         {/* Paused State */}
         {isPaused && !error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/70" role="status" aria-live="polite">
             <p className="text-white text-xl font-semibold">Scanning Paused</p>
           </div>
         )}
       </div>
 
       {/* Bottom Bar */}
-      <div className="safe-bottom bg-black/80 backdrop-blur px-4 py-4">
+      <footer className="safe-bottom bg-black/80 backdrop-blur px-4 py-4">
         {/* Last Scanned */}
-        <div className="mb-4 text-center min-h-[2rem]">
+        <div className="mb-4 text-center min-h-[2rem]" role="status" aria-live="polite">
           {lastBarcode ? (
             <p className="text-gray-300 text-sm">
               Last: <span className="font-mono text-white">{lastBarcode}</span>
@@ -225,12 +277,14 @@ export default function Scanner({
         {/* Pause/Resume Button */}
         <button
           onClick={handlePauseResume}
-          className={`w-full py-4 rounded-xl font-semibold text-white transition-colors
-                     ${isPaused ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
+          className={`w-full py-4 rounded-xl font-semibold text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black
+                     ${isPaused ? 'bg-green-600 hover:bg-green-700 focus:ring-green-400' : 'bg-gray-600 hover:bg-gray-700 focus:ring-gray-400'}`}
+          aria-pressed={isPaused}
+          aria-label={isPaused ? 'Resume barcode scanning' : 'Pause barcode scanning'}
         >
           {isPaused ? 'Resume Scanning' : 'Pause Scanning'}
         </button>
-      </div>
+      </footer>
 
       {/* Scanning Animation Styles */}
       <style>{`
@@ -243,6 +297,6 @@ export default function Scanner({
           animation: scan 2s ease-in-out infinite;
         }
       `}</style>
-    </div>
+    </main>
   );
 }

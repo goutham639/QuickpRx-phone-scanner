@@ -40,34 +40,37 @@ export default function App() {
   // Mode selection screen (mode === null)
   if (mode === null) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom">
+      <main className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom" role="main">
         {/* QuickPRx Branding */}
-        <div className="mb-10 text-center">
+        <header className="mb-10 text-center">
           <h1 className="text-3xl font-bold text-blue-800 dark:text-blue-400">
             QuickPRx
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Pharmacy Scanner
           </p>
-        </div>
+        </header>
 
         {/* Mode Selection Cards */}
-        <div className="w-full max-w-sm space-y-4">
+        <nav className="w-full max-w-sm space-y-4" aria-label="Scanner mode selection">
           {/* Barcode Scan Card */}
           <button
             onClick={() => setMode('barcode')}
             className="w-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6
                      hover:shadow-xl transition-shadow text-left
-                     border-2 border-transparent hover:border-blue-500"
+                     border-2 border-transparent hover:border-blue-500
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            aria-label="Scan Barcode - Real-time barcode scanning"
           >
             <div className="flex items-center gap-4">
               {/* Barcode Icon */}
-              <div className="bg-blue-100 dark:bg-blue-900 p-3 rounded-xl">
+              <div className="bg-blue-100 dark:bg-blue-900 p-3 rounded-xl" aria-hidden="true">
                 <svg
                   className="w-8 h-8 text-blue-600 dark:text-blue-400"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -93,16 +96,19 @@ export default function App() {
             onClick={() => setMode('label')}
             className="w-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6
                      hover:shadow-xl transition-shadow text-left
-                     border-2 border-transparent hover:border-blue-500"
+                     border-2 border-transparent hover:border-blue-500
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            aria-label="Scan Label - Photo-based label capture"
           >
             <div className="flex items-center gap-4">
               {/* Camera Icon */}
-              <div className="bg-green-100 dark:bg-green-900 p-3 rounded-xl">
+              <div className="bg-green-100 dark:bg-green-900 p-3 rounded-xl" aria-hidden="true">
                 <svg
                   className="w-8 h-8 text-green-600 dark:text-green-400"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -128,13 +134,13 @@ export default function App() {
               </div>
             </div>
           </button>
-        </div>
+        </nav>
 
         {/* Footer */}
-        <p className="mt-10 text-center text-gray-400 dark:text-gray-500 text-xs max-w-xs">
+        <footer className="mt-10 text-center text-gray-400 dark:text-gray-500 text-xs max-w-xs">
           Select a scanning mode to connect to your QuickPRx Portal
-        </p>
-      </div>
+        </footer>
+      </main>
     );
   }
 

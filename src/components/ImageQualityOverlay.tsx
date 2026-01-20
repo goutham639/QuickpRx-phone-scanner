@@ -69,6 +69,8 @@ function QualityBadge({ quality }: { quality: ImageQualityResult }) {
   return (
     <div
       className={`${colorClass} text-white px-3 py-1.5 rounded-full flex items-center gap-1.5 text-sm font-medium shadow-lg`}
+      role="status"
+      aria-label={`Image quality: ${label}`}
     >
       <QualityIcon quality={quality.overallQuality} />
       {label}
@@ -199,10 +201,16 @@ export function CaptureWarningModal({
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quality-warning-title"
+      aria-describedby="quality-warning-description"
+    >
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
         <div className="flex items-center gap-3 mb-4">
-          <div className="bg-yellow-500 rounded-full p-2">
+          <div className="bg-yellow-500 rounded-full p-2" aria-hidden="true">
             <svg
               className="w-6 h-6 text-white"
               fill="none"
@@ -217,22 +225,22 @@ export function CaptureWarningModal({
               />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          <h3 id="quality-warning-title" className="text-lg font-semibold text-gray-900 dark:text-white">
             Image Quality Warning
           </h3>
         </div>
 
-        <p className="text-gray-600 dark:text-gray-300 mb-4">
+        <p id="quality-warning-description" className="text-gray-600 dark:text-gray-300 mb-4">
           The image quality may affect OCR accuracy:
         </p>
 
-        <ul className="mb-6 space-y-2">
+        <ul className="mb-4 space-y-2" aria-label="Quality issues">
           {quality.issues.map((issue, index) => (
             <li
               key={index}
               className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400"
             >
-              <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                 <path
                   fillRule="evenodd"
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
@@ -244,19 +252,33 @@ export function CaptureWarningModal({
           ))}
         </ul>
 
+        {/* Helpful tips based on issues */}
+        <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+          <p className="text-xs text-blue-700 dark:text-blue-300 font-medium mb-1">Tips to improve:</p>
+          <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+            {!quality.isSharp && <li>• Hold phone steady and wait for focus</li>}
+            {!quality.isBrightnessOk && quality.brightness < 25 && <li>• Move to a brighter area or turn on lights</li>}
+            {!quality.isBrightnessOk && quality.brightness > 85 && <li>• Reduce glare or move away from direct light</li>}
+            {quality.contrast < 15 && <li>• Ensure good contrast between label and background</li>}
+          </ul>
+        </div>
+
         <div className="flex gap-3">
           <button
             onClick={onCancel}
             className="flex-1 py-3 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300
                      bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600
-                     transition-colors"
+                     transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+            aria-label="Retake photo with better quality"
           >
             Retake
           </button>
           <button
             onClick={onConfirm}
             className="flex-1 py-3 px-4 rounded-xl font-medium text-white
-                     bg-blue-600 hover:bg-blue-700 transition-colors"
+                     bg-blue-600 hover:bg-blue-700 transition-colors
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            aria-label="Capture photo anyway despite quality issues"
           >
             Capture Anyway
           </button>

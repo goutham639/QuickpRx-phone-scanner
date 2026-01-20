@@ -1,6 +1,7 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { IMAGE_CAPTURE_CONFIG } from '../config/imageCapture';
 import { analyzeImageQualityFast } from '../utils/imageAnalysis';
+import { compressCanvas } from '../utils/imageCompression';
 import type { ImageQualityResult, PreviewQualityState } from '../types/imageCapture';
 
 export type LabelCaptureStatus = 'idle' | 'starting' | 'active' | 'capturing' | 'error';
@@ -197,8 +198,19 @@ export function useLabelCapture(): UseLabelCapture {
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Convert to JPEG blob with 0.85 quality
-    const blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
+    // Compress image if enabled
+    let blob: Blob | null;
+    if (IMAGE_CAPTURE_CONFIG.enableCompression) {
+      try {
+        const result = await compressCanvas(canvas);
+        blob = result.blob;
+      } catch {
+        // Fallback to uncompressed if compression fails
+        blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
+      }
+    } else {
+      blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
+    }
 
     setStatus('active');
 
@@ -247,8 +259,19 @@ export function useLabelCapture(): UseLabelCapture {
       ? analyzeImageQualityFast(imageData)
       : null;
 
-    // Convert to JPEG blob
-    const blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
+    // Compress image if enabled
+    let blob: Blob | null;
+    if (IMAGE_CAPTURE_CONFIG.enableCompression) {
+      try {
+        const result = await compressCanvas(canvas);
+        blob = result.blob;
+      } catch {
+        // Fallback to uncompressed if compression fails
+        blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
+      }
+    } else {
+      blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
+    }
 
     setStatus('active');
 
