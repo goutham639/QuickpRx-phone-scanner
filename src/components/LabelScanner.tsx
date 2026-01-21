@@ -9,9 +9,11 @@ import type { ImageQualityResult } from '../types/imageCapture';
 interface LabelScannerProps {
   onDisconnect: () => void;
   onModeSwitch: () => void;
+  /** Whether to auto-restore a previous session on mount */
+  autoRestore?: boolean;
 }
 
-export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScannerProps) {
+export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore = false }: LabelScannerProps) {
   const {
     status: sessionStatus,
     sessionId,
@@ -20,7 +22,10 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
     join,
     upload,
     disconnect,
+    restoreSession,
   } = useLabelScanSession();
+
+  const [isRestoring, setIsRestoring] = useState(false);
 
   const {
     videoRef,
@@ -52,12 +57,27 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
   const [burstFeedback, setBurstFeedback] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-restore session on mount if requested
+  useEffect(() => {
+    if (autoRestore && !sessionId && !isRestoring) {
+      const doRestore = async () => {
+        setIsRestoring(true);
+        const success = await restoreSession();
+        if (!success) {
+          console.log('Label session restoration failed');
+        }
+        setIsRestoring(false);
+      };
+      doRestore();
+    }
+  }, [autoRestore, sessionId, isRestoring, restoreSession]);
+
   // Auto-focus input on mount (pair code entry state)
   useEffect(() => {
-    if (!sessionId) {
+    if (!sessionId && !isRestoring) {
       inputRef.current?.focus();
     }
-  }, [sessionId]);
+  }, [sessionId, isRestoring]);
 
   // Auto-start camera when session joined
   useEffect(() => {
@@ -245,6 +265,38 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
   const isConnected = sessionStatus === 'active' || sessionStatus === 'uploading';
   const isCameraActive = cameraStatus === 'active' || cameraStatus === 'capturing';
   const isUploading = sessionStatus === 'uploading';
+
+  // State 0: Restoring session
+  if (isRestoring || (autoRestore && !sessionId && sessionStatus === 'joining')) {
+    return (
+      <main className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom" role="main">
+        <div className="flex flex-col items-center">
+          <svg
+            className="animate-spin h-10 w-10 text-blue-600 mb-4"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          <p className="text-gray-600 dark:text-gray-400">Reconnecting to session...</p>
+        </div>
+      </main>
+    );
+  }
 
   // State 1: Pair code entry (no sessionId)
   if (!sessionId) {

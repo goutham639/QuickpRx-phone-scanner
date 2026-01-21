@@ -164,6 +164,22 @@ export function useLabelScanSession(): UseLabelScanSession {
   );
 
   const disconnect = useCallback(async () => {
+    // Notify server that phone is leaving the session
+    if (sessionIdRef.current && tokenRef.current) {
+      try {
+        await fetch(`${API_URL}/v1/label-scan/sessions/${sessionIdRef.current}/leave`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tokenRef.current}`,
+          },
+        });
+      } catch (err) {
+        // Ignore errors - we're disconnecting anyway
+        console.warn('Failed to notify server of disconnect:', err);
+      }
+    }
+
+    // Clear local state
     setStatus('idle');
     setSessionId(null);
     setError(null);
@@ -178,6 +194,7 @@ export function useLabelScanSession(): UseLabelScanSession {
 
   /**
    * Restore a previous session from storage
+   * Validates the token is still active before restoring
    */
   const restoreSession = useCallback(async (): Promise<boolean> => {
     const stored = await getSession('label');
@@ -187,14 +204,60 @@ export function useLabelScanSession(): UseLabelScanSession {
       return false;
     }
 
-    // Session found, restore it
-    setSessionId(stored.sessionId);
-    sessionIdRef.current = stored.sessionId;
-    tokenRef.current = stored.token;
-    setStatus('active');
+    // Validate the token is still active by making a test request
+    setStatus('joining');
     setError(null);
 
-    return true;
+    try {
+      // Try to get session status to validate token
+      const response = await fetch(
+        `${API_URL}/v1/label-scan/sessions/${stored.sessionId}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${stored.token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        // Token is invalid or session expired
+        await deleteSession('label');
+        setHasStoredSession(false);
+        setStatus('idle');
+
+        if (response.status === 401 || response.status === 403) {
+          setError('Session expired. Please reconnect.');
+        } else if (response.status === 404) {
+          setError('Session no longer exists. Please reconnect.');
+        } else {
+          setError('Failed to restore session. Please reconnect.');
+        }
+
+        return false;
+      }
+
+      // Session is valid, restore it
+      setSessionId(stored.sessionId);
+      sessionIdRef.current = stored.sessionId;
+      tokenRef.current = stored.token;
+      setStatus('active');
+      setError(null);
+
+      return true;
+    } catch (err) {
+      // Network error - still try to restore (offline support)
+      // The upload will fail if the session is invalid
+      console.warn('Could not validate session, restoring anyway:', err);
+
+      setSessionId(stored.sessionId);
+      sessionIdRef.current = stored.sessionId;
+      tokenRef.current = stored.token;
+      setStatus('active');
+      setError(null);
+
+      return true;
+    }
   }, []);
 
   return {

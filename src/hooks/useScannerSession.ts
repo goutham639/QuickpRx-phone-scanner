@@ -251,6 +251,7 @@ export function useScannerSession(): UseScannerSession {
 
   /**
    * Restore a previous session from storage
+   * Returns true if restoration was successful, false otherwise
    */
   const restoreSession = useCallback(async (): Promise<boolean> => {
     const stored = await getSession('barcode');
@@ -260,17 +261,125 @@ export function useScannerSession(): UseScannerSession {
       return false;
     }
 
-    // Session found, restore it
+    // Session found, attempt to restore it
+    setStatus('pairing');
     setSessionId(stored.sessionId);
     tokenRef.current = stored.token;
     setScanCount(0);
     pendingScansRef.current = [];
     setError(null);
 
-    // Reconnect WebSocket
-    connectWebSocket(stored.token);
+    // Try to reconnect WebSocket
+    // The WebSocket handlers will update status on success/failure
+    return new Promise((resolve) => {
+      const wsUrl = `${WS_URL}/ws?token=${stored.token}`;
+      const ws = new WebSocket(wsUrl);
 
-    return true;
+      // Set a timeout for connection
+      const timeout = setTimeout(() => {
+        ws.close();
+        setStatus('error');
+        setError('Connection timeout. Please reconnect.');
+        setSessionId(null);
+        tokenRef.current = null;
+        deleteSession('barcode');
+        setHasStoredSession(false);
+        resolve(false);
+      }, 10000);
+
+      ws.onopen = () => {
+        clearTimeout(timeout);
+        reconnectAttemptRef.current = 0;
+        setStatus('paired');
+        setError(null);
+        wsRef.current = ws;
+
+        // Send any pending scans
+        while (pendingScansRef.current.length > 0) {
+          const scan = pendingScansRef.current.shift();
+          if (scan && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(scan));
+          }
+        }
+
+        resolve(true);
+      };
+
+      ws.onerror = () => {
+        clearTimeout(timeout);
+        setStatus('error');
+        setError('Failed to restore session. Please reconnect.');
+        setSessionId(null);
+        tokenRef.current = null;
+        deleteSession('barcode');
+        setHasStoredSession(false);
+        resolve(false);
+      };
+
+      ws.onclose = (event) => {
+        // If closed before connection established (error case)
+        if (event.code !== 1000 && !wsRef.current) {
+          clearTimeout(timeout);
+          setStatus('error');
+          setError('Session expired. Please reconnect.');
+          setSessionId(null);
+          tokenRef.current = null;
+          deleteSession('barcode');
+          setHasStoredSession(false);
+          resolve(false);
+          return;
+        }
+
+        // Normal reconnection handling for established connections
+        if (
+          event.code !== 1000 &&
+          tokenRef.current &&
+          reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS
+        ) {
+          reconnectAttemptRef.current++;
+          setStatus('pairing');
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (tokenRef.current) {
+              connectWebSocket(tokenRef.current);
+            }
+          }, RECONNECT_DELAY);
+        } else if (event.code !== 1000) {
+          setStatus('error');
+          setError('Connection lost. Please reconnect.');
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as WebSocketMessage;
+
+          switch (data.type) {
+            case 'connected':
+              setStatus('paired');
+              break;
+            case 'error':
+              setError(typeof data.error === 'string' ? data.error : 'Unknown error');
+              setStatus('error');
+              break;
+            case 'session.closed':
+              setStatus('idle');
+              setSessionId(null);
+              setError('Session was closed');
+              deleteSession('barcode');
+              setHasStoredSession(false);
+              break;
+            case 'scan.confirmed':
+              break;
+            case 'scan.error':
+              setLastScanError(typeof data.error === 'string' ? data.error : 'Scan failed');
+              break;
+          }
+        } catch {
+          console.error('Failed to parse WebSocket message');
+        }
+      };
+    });
   }, [connectWebSocket]);
 
   const clearScanError = useCallback(() => {
