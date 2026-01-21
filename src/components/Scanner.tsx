@@ -223,11 +223,11 @@ export default function Scanner({
             <div className="absolute inset-0" aria-hidden="true">
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="relative w-72 h-48">
-                  {/* Corner brackets */}
-                  <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl" />
-                  <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr" />
-                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl" />
-                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br" />
+                  {/* Corner brackets with drop shadows for visibility on light backgrounds */}
+                  <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
+                  <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
+                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
+                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
                 </div>
               </div>
             </div>

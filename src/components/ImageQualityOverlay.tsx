@@ -15,20 +15,6 @@ interface ImageQualityOverlayProps {
 }
 
 /**
- * Get badge color based on overall quality
- */
-function getQualityColor(quality: 'good' | 'acceptable' | 'poor'): string {
-  switch (quality) {
-    case 'good':
-      return 'bg-green-500';
-    case 'acceptable':
-      return 'bg-yellow-500';
-    case 'poor':
-      return 'bg-red-500';
-  }
-}
-
-/**
  * Get quality icon based on overall quality
  */
 function QualityIcon({ quality }: { quality: 'good' | 'acceptable' | 'poor' }) {
@@ -56,15 +42,39 @@ function QualityIcon({ quality }: { quality: 'good' | 'acceptable' | 'poor' }) {
 
 /**
  * Quality badge component
+ * Shows unified quality indicator - badge reflects actual issues, not generic "OK"
  */
 function QualityBadge({ quality }: { quality: ImageQualityResult }) {
-  const colorClass = getQualityColor(quality.overallQuality);
-  const label =
-    quality.overallQuality === 'good'
-      ? 'Good'
-      : quality.overallQuality === 'acceptable'
-      ? 'OK'
-      : 'Poor';
+  // If there are issues, show the first issue as the badge label
+  // This prevents showing "OK" when there's actually a problem
+  const hasIssues = quality.issues.length > 0;
+
+  // Determine color based on whether there are issues
+  const colorClass = hasIssues
+    ? quality.overallQuality === 'poor'
+      ? 'bg-red-500'
+      : 'bg-yellow-500'
+    : 'bg-green-500';
+
+  // Determine icon based on issues
+  const iconQuality = hasIssues
+    ? quality.overallQuality === 'poor'
+      ? 'poor'
+      : 'acceptable'
+    : 'good';
+
+  // Label: show "Good" only when no issues, otherwise show primary issue indicator
+  const label = hasIssues
+    ? quality.issues[0]?.includes('blurry')
+      ? 'Blurry'
+      : quality.issues[0]?.includes('dark')
+      ? 'Too Dark'
+      : quality.issues[0]?.includes('bright')
+      ? 'Too Bright'
+      : quality.issues[0]?.includes('contrast')
+      ? 'Low Contrast'
+      : 'Check Quality'
+    : 'Good';
 
   return (
     <div
@@ -72,7 +82,7 @@ function QualityBadge({ quality }: { quality: ImageQualityResult }) {
       role="status"
       aria-label={`Image quality: ${label}`}
     >
-      <QualityIcon quality={quality.overallQuality} />
+      <QualityIcon quality={iconQuality as 'good' | 'acceptable' | 'poor'} />
       {label}
     </div>
   );
@@ -109,21 +119,40 @@ function CheckingIndicator() {
 }
 
 /**
- * Issue warning display
+ * Issue warning display - shows actionable tip for the primary issue
  */
 function IssueWarning({ issues }: { issues: string[] }) {
   if (issues.length === 0) return null;
 
+  // Get helpful tip based on primary issue
+  const primaryIssue = issues[0] || '';
+  let tip = '';
+
+  if (primaryIssue.includes('blurry')) {
+    tip = 'Hold steady';
+  } else if (primaryIssue.includes('dark')) {
+    tip = 'Add more light';
+  } else if (primaryIssue.includes('bright')) {
+    tip = 'Reduce glare';
+  } else if (primaryIssue.includes('contrast')) {
+    tip = 'Adjust angle';
+  }
+
+  // Show additional issues count if more than one
+  const additionalCount = issues.length - 1;
+
   return (
-    <div className="mt-2 space-y-1">
-      {issues.map((issue, index) => (
-        <div
-          key={index}
-          className="bg-red-500/90 text-white text-xs px-3 py-1.5 rounded-full inline-block mr-1"
-        >
-          {issue}
+    <div className="mt-2 flex flex-col gap-1">
+      {tip && (
+        <div className="bg-black/70 text-white text-xs px-3 py-1.5 rounded-full inline-block">
+          {tip}
         </div>
-      ))}
+      )}
+      {additionalCount > 0 && (
+        <div className="text-white/70 text-xs">
+          +{additionalCount} more {additionalCount === 1 ? 'issue' : 'issues'}
+        </div>
+      )}
     </div>
   );
 }

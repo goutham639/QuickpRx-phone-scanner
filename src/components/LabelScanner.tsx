@@ -545,13 +545,13 @@ export default function LabelScanner({ onDisconnect, onModeSwitch }: LabelScanne
         {/* Camera active guide */}
         {isCameraActive && !cameraError && (
           <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
-            {/* Frame overlay for label positioning */}
-            <div className="relative w-80 h-56 border-2 border-white/50 rounded-lg">
-              {/* Corner brackets */}
-              <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl" />
-              <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr" />
-              <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl" />
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-white rounded-br" />
+            {/* Frame overlay for label positioning - with shadows for visibility on light backgrounds */}
+            <div className="relative w-80 h-56 border-2 border-white/50 rounded-lg shadow-[0_0_0_1px_rgba(0,0,0,0.3)]">
+              {/* Corner brackets with drop shadows for visibility on light backgrounds */}
+              <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
+              <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
+              <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
+              <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-white rounded-br drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
             </div>
           </div>
         )}
