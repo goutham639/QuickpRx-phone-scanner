@@ -5,6 +5,7 @@ import { useBurstCapture } from '../hooks/useBurstCapture';
 import ImageQualityOverlay, { CaptureWarningModal } from './ImageQualityOverlay';
 import { IMAGE_CAPTURE_CONFIG } from '../config/imageCapture';
 import type { ImageQualityResult } from '../types/imageCapture';
+import { preValidateImage, type PreValidationResult } from '../utils/imagePreValidation';
 
 interface LabelScannerProps {
   onDisconnect: () => void;
@@ -55,6 +56,11 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
     quality: ImageQualityResult;
   } | null>(null);
   const [burstFeedback, setBurstFeedback] = useState<string | null>(null);
+  const [showPreValidationWarning, setShowPreValidationWarning] = useState(false);
+  const [pendingPreValidation, setPendingPreValidation] = useState<{
+    blob: Blob;
+    result: PreValidationResult;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto-restore session on mount if requested
@@ -199,6 +205,25 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
     setPendingCapture(null);
   }, []);
 
+  /**
+   * Handle pre-validation warning confirmation (upload anyway)
+   */
+  const handlePreValidationConfirm = useCallback(async () => {
+    if (pendingPreValidation) {
+      await processAndUpload(pendingPreValidation.blob);
+    }
+    setShowPreValidationWarning(false);
+    setPendingPreValidation(null);
+  }, [pendingPreValidation, processAndUpload]);
+
+  /**
+   * Handle pre-validation warning cancel (retake)
+   */
+  const handlePreValidationCancel = useCallback(() => {
+    setShowPreValidationWarning(false);
+    setPendingPreValidation(null);
+  }, []);
+
   // Handle capture button
   const handleCapture = useCallback(async () => {
     // Get video element for burst capture
@@ -239,7 +264,17 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
       return;
     }
 
-    // Check quality and show warning if poor
+    // Step 1: Pre-validation - check if this looks like a label at all
+    const preValidation = await preValidateImage(capturedBlob);
+
+    if (!preValidation.isValid) {
+      // Show pre-validation warning with specific feedback
+      setPendingPreValidation({ blob: capturedBlob, result: preValidation });
+      setShowPreValidationWarning(true);
+      return;
+    }
+
+    // Step 2: Check image quality (blur, brightness, contrast)
     if (
       capturedQuality &&
       capturedQuality.overallQuality === 'poor' &&
@@ -250,7 +285,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
       return;
     }
 
-    // Process and upload
+    // Step 3: Process and upload
     await processAndUpload(capturedBlob);
   }, [
     videoRef,
@@ -419,6 +454,118 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
   // State 2 & 3: Camera active with upload feedback
   return (
     <main className="h-screen flex flex-col bg-black" role="main" aria-label="Label Scanner">
+      {/* Pre-Validation Warning Modal */}
+      {showPreValidationWarning && pendingPreValidation && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="prevalidation-warning-title"
+          aria-describedby="prevalidation-warning-description"
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-orange-500 rounded-full p-2" aria-hidden="true">
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <h3 id="prevalidation-warning-title" className="text-lg font-semibold text-gray-900 dark:text-white">
+                Doesn't Look Like a Label
+              </h3>
+            </div>
+
+            <p id="prevalidation-warning-description" className="text-gray-600 dark:text-gray-300 mb-4">
+              {pendingPreValidation.result.suggestion || "This image may not be a prescription label."}
+            </p>
+
+            {/* Check details */}
+            <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-sm space-y-2">
+              <div className="flex items-center gap-2">
+                {pendingPreValidation.result.checks.textDensity.passed ? (
+                  <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                )}
+                <span className={pendingPreValidation.result.checks.textDensity.passed ? 'text-gray-600 dark:text-gray-300' : 'text-red-600 dark:text-red-400'}>
+                  Text detection: {pendingPreValidation.result.checks.textDensity.message || 'OK'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {pendingPreValidation.result.checks.colorDistribution.passed ? (
+                  <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                )}
+                <span className={pendingPreValidation.result.checks.colorDistribution.passed ? 'text-gray-600 dark:text-gray-300' : 'text-red-600 dark:text-red-400'}>
+                  Color/contrast: {pendingPreValidation.result.checks.colorDistribution.message || 'OK'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {pendingPreValidation.result.checks.aspectRatio.passed ? (
+                  <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                )}
+                <span className={pendingPreValidation.result.checks.aspectRatio.passed ? 'text-gray-600 dark:text-gray-300' : 'text-red-600 dark:text-red-400'}>
+                  Image framing: {pendingPreValidation.result.checks.aspectRatio.message || 'OK'}
+                </span>
+              </div>
+            </div>
+
+            {/* Confidence indicator */}
+            <div className="mb-6 text-center">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Confidence: {Math.round(pendingPreValidation.result.confidence * 100)}%
+              </span>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handlePreValidationCancel}
+                className="flex-1 py-3 px-4 rounded-xl font-medium text-white
+                         bg-blue-600 hover:bg-blue-700 transition-colors
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                aria-label="Retake photo"
+              >
+                Retake
+              </button>
+              <button
+                onClick={handlePreValidationConfirm}
+                className="flex-1 py-3 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300
+                         bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600
+                         transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                aria-label="Upload photo anyway"
+              >
+                Upload Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Quality Warning Modal */}
       {showQualityWarning && pendingCapture && (
         <CaptureWarningModal
