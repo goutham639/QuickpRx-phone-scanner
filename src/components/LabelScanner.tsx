@@ -741,26 +741,57 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
           />
         )}
 
-        {/* Camera active guide */}
+        {/* Document Scanner Frame Guide */}
         {isCameraActive && !cameraError && (
-          <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
-            {/* Frame overlay for label positioning - with shadows for visibility on light backgrounds */}
-            <div className="relative w-80 h-56 border-2 border-white/50 rounded-lg shadow-[0_0_0_1px_rgba(0,0,0,0.3)]">
-              {/* Corner brackets with drop shadows for visibility on light backgrounds */}
-              <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
-              <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
-              <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-white rounded-br drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
-            </div>
-          </div>
-        )}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+            {/* Dark overlay with cutout for the frame */}
+            <div className="absolute inset-0 bg-black/40" />
 
-        {/* Instruction Text */}
-        {isCameraActive && !cameraError && (
-          <div className="absolute top-1/2 left-0 right-0 mt-36 text-center">
-            <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full" role="status">
-              Position label within frame
-            </p>
+            {/* Frame container - typical prescription label aspect ratio (3:2) */}
+            <div className="relative z-10 w-[85%] max-w-md aspect-[3/2]">
+              {/* Main border with subtle glow */}
+              <div className="absolute inset-0 border-2 border-white/60 rounded-lg shadow-[0_0_0_1px_rgba(0,0,0,0.4),0_0_20px_rgba(255,255,255,0.2)]" />
+
+              {/* Animated corner brackets */}
+              <div className="absolute -top-1 -left-1 w-12 h-12 border-t-[5px] border-l-[5px] border-green-400 rounded-tl-lg drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
+              <div className="absolute -top-1 -right-1 w-12 h-12 border-t-[5px] border-r-[5px] border-green-400 rounded-tr-lg drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
+              <div className="absolute -bottom-1 -left-1 w-12 h-12 border-b-[5px] border-l-[5px] border-green-400 rounded-bl-lg drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
+              <div className="absolute -bottom-1 -right-1 w-12 h-12 border-b-[5px] border-r-[5px] border-green-400 rounded-br-lg drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
+
+              {/* Helper text inside frame */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full">
+                  <p className="text-white text-xs font-medium">
+                    Align label here
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Instruction text below frame */}
+            <div className="absolute bottom-[15%] left-0 right-0 text-center">
+              <div className="inline-flex flex-col items-center gap-2 bg-black/70 backdrop-blur-sm px-6 py-3 rounded-2xl">
+                <svg
+                  className="w-6 h-6 text-green-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <p className="text-white text-sm font-medium" role="status">
+                  Position label within frame
+                </p>
+                <p className="text-white/70 text-xs">
+                  Hold steady for best results
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
