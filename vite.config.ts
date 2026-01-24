@@ -1,16 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-import fs from 'fs';
-import path from 'path';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig({
-  server: {
-    https: {
-      key: fs.readFileSync(path.resolve(__dirname, 'localhost+1-key.pem')),
-      cert: fs.readFileSync(path.resolve(__dirname, 'localhost+1.pem')),
-    },
-  },
   // Worker bundling configuration
   worker: {
     format: 'es',
@@ -30,6 +23,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    basicSsl(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.png', 'icon-512.png'],
