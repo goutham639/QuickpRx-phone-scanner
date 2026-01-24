@@ -1,8 +1,16 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import fs from 'fs';
+import path from 'path';
 
 export default defineConfig({
+  server: {
+    https: {
+      key: fs.readFileSync(path.resolve(__dirname, 'localhost+1-key.pem')),
+      cert: fs.readFileSync(path.resolve(__dirname, 'localhost+1.pem')),
+    },
+  },
   // Worker bundling configuration
   worker: {
     format: 'es',

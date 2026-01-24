@@ -37,19 +37,17 @@ export function detectDocumentBoundary(
   // Step 4: Order corners: TL, TR, BR, BL
   const orderedCorners = orderCorners(quad);
 
-  // Step 5: Calculate confidence based on area and shape
-  const area = calculateArea(orderedCorners);
-  const imageArea = width * height;
-  const areaRatio = area / imageArea;
+  // Step 5: Validate detection quality
+  const validation = validateDetection(orderedCorners, width, height, imageData);
 
-  // Good detection: document takes 20-80% of image
-  const confidence = areaRatio > 0.2 && areaRatio < 0.8 ?
-    Math.min(1, areaRatio * 1.5) : 0.3;
+  if (!validation.isValid) {
+    return null;
+  }
 
   return {
     corners: orderedCorners,
-    confidence,
-    area,
+    confidence: validation.confidence,
+    area: validation.area,
   };
 }
 
@@ -238,4 +236,129 @@ function calculateArea(corners: Corner[]): number {
   }
 
   return Math.abs(area) / 2;
+}
+
+/**
+ * Validate detected document with multiple checks
+ */
+function validateDetection(
+  corners: Corner[],
+  width: number,
+  height: number,
+  imageData: ImageData
+): { isValid: boolean; confidence: number; area: number } {
+  const area = calculateArea(corners);
+  const imageArea = width * height;
+  const areaRatio = area / imageArea;
+
+  // Check 1: Area must be 15-85% of image
+  // Too small = noise, too large = probably full frame
+  if (areaRatio < 0.15 || areaRatio > 0.85) {
+    return { isValid: false, confidence: 0, area };
+  }
+
+  // Check 2: Aspect ratio validation
+  // Calculate bounding box
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const boxWidth = maxX - minX;
+  const boxHeight = maxY - minY;
+  const aspectRatio = boxWidth / boxHeight;
+
+  // Labels are typically 0.6 (portrait) to 2.5 (landscape)
+  // Reject extreme ratios (keyboards, screens, etc.)
+  if (aspectRatio < 0.6 || aspectRatio > 2.5) {
+    return { isValid: false, confidence: 0, area };
+  }
+
+  // Check 3: Shape regularity - corners should form a proper quad
+  // Calculate angles between consecutive corners
+  const angles: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const prev = corners[(i + 3) % 4]!;
+    const curr = corners[i]!;
+    const next = corners[(i + 1) % 4]!;
+
+    const v1x = prev.x - curr.x;
+    const v1y = prev.y - curr.y;
+    const v2x = next.x - curr.x;
+    const v2y = next.y - curr.y;
+
+    const dot = v1x * v2x + v1y * v2y;
+    const mag1 = Math.sqrt(v1x * v1x + v1y * v1y);
+    const mag2 = Math.sqrt(v2x * v2x + v2y * v2y);
+
+    const angle = Math.acos(dot / (mag1 * mag2)) * (180 / Math.PI);
+    angles.push(angle);
+  }
+
+  // All angles should be roughly 90 degrees (60-120 range for flexibility)
+  const validAngles = angles.filter((a) => a >= 60 && a <= 120);
+  if (validAngles.length < 3) {
+    // At least 3 corners should have reasonable angles
+    return { isValid: false, confidence: 0, area };
+  }
+
+  // Check 4: Edge length consistency
+  // Opposite edges should be roughly similar length
+  const edge1 = Math.sqrt(
+    Math.pow(corners[1]!.x - corners[0]!.x, 2) +
+    Math.pow(corners[1]!.y - corners[0]!.y, 2)
+  );
+  const edge2 = Math.sqrt(
+    Math.pow(corners[2]!.x - corners[1]!.x, 2) +
+    Math.pow(corners[2]!.y - corners[1]!.y, 2)
+  );
+  const edge3 = Math.sqrt(
+    Math.pow(corners[3]!.x - corners[2]!.x, 2) +
+    Math.pow(corners[3]!.y - corners[2]!.y, 2)
+  );
+  const edge4 = Math.sqrt(
+    Math.pow(corners[0]!.x - corners[3]!.x, 2) +
+    Math.pow(corners[0]!.y - corners[3]!.y, 2)
+  );
+
+  // Opposite edges should be within 50% of each other
+  const ratio1 = Math.max(edge1, edge3) / Math.min(edge1, edge3);
+  const ratio2 = Math.max(edge2, edge4) / Math.min(edge2, edge4);
+
+  if (ratio1 > 2.0 || ratio2 > 2.0) {
+    // Too irregular - probably not a document
+    return { isValid: false, confidence: 0, area };
+  }
+
+  // Calculate final confidence score
+  let confidence = 0;
+
+  // Area score: peak at 40-60% coverage
+  const idealAreaRatio = areaRatio > 0.4 && areaRatio < 0.6 ? 1.0 : 0.7;
+  confidence += idealAreaRatio * 0.3;
+
+  // Aspect ratio score: prefer 1:1 to 2:1
+  const aspectScore = aspectRatio >= 1.0 && aspectRatio <= 2.0 ? 1.0 : 0.7;
+  confidence += aspectScore * 0.3;
+
+  // Angle score: more valid angles = better
+  const angleScore = validAngles.length / 4;
+  confidence += angleScore * 0.2;
+
+  // Edge consistency score
+  const edgeScore = 1 - Math.max(ratio1 - 1, ratio2 - 1) / 1.5;
+  confidence += Math.max(0, edgeScore) * 0.2;
+
+  // Must meet minimum confidence threshold
+  if (confidence < 0.5) {
+    return { isValid: false, confidence, area };
+  }
+
+  return {
+    isValid: true,
+    confidence: Math.min(1, confidence),
+    area,
+  };
 }

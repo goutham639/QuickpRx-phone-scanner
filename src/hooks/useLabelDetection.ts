@@ -7,6 +7,29 @@ interface UseLabelDetectionResult {
 }
 
 /**
+ * Check if two detections are similar (for temporal filtering)
+ */
+function isSimilarDetection(a: DetectedDocument, b: DetectedDocument): boolean {
+  // Compare corner positions - allow 50px tolerance
+  const tolerance = 50;
+
+  for (let i = 0; i < 4; i++) {
+    const cornerA = a.corners[i];
+    const cornerB = b.corners[i];
+    if (!cornerA || !cornerB) return false;
+
+    const dx = Math.abs(cornerA.x - cornerB.x);
+    const dy = Math.abs(cornerA.y - cornerB.y);
+
+    if (dx > tolerance || dy > tolerance) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Hook to detect label boundaries in real-time from video feed
  */
 export function useLabelDetection(
@@ -17,6 +40,8 @@ export function useLabelDetection(
   const [isDetecting, setIsDetecting] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const lastDetectionRef = useRef<DetectedDocument | null>(null);
+  const stableFramesRef = useRef<number>(0);
 
   useEffect(() => {
     if (!enabled || !videoRef.current) {
@@ -37,7 +62,7 @@ export function useLabelDetection(
     if (!ctx) return;
 
     let lastDetectionTime = 0;
-    const detectionInterval = 500; // Detect every 500ms (2 FPS)
+    const detectionInterval = 300; // Detect every 300ms (~3 FPS)
 
     const detectFrame = () => {
       if (!video || !video.videoWidth || !video.videoHeight) {
@@ -69,7 +94,7 @@ export function useLabelDetection(
       try {
         const detected = detectDocumentBoundary(imageData);
 
-        if (detected && detected.confidence > 0.3) {
+        if (detected && detected.confidence > 0.6) {
           // Scale corners back to video dimensions
           const scaleBack = video.videoWidth / canvas.width;
           const scaledDoc: DetectedDocument = {
@@ -79,13 +104,29 @@ export function useLabelDetection(
               y: corner.y * scaleBack,
             })) as [typeof detected.corners[0], typeof detected.corners[1], typeof detected.corners[2], typeof detected.corners[3]],
           };
-          setDetectedDoc(scaledDoc);
+
+          // Temporal filtering: require 2 consecutive stable detections
+          if (lastDetectionRef.current && isSimilarDetection(lastDetectionRef.current, scaledDoc)) {
+            stableFramesRef.current += 1;
+            if (stableFramesRef.current >= 2) {
+              setDetectedDoc(scaledDoc);
+            }
+          } else {
+            stableFramesRef.current = 0;
+          }
+
+          lastDetectionRef.current = scaledDoc;
         } else {
+          // No detection - clear after 1 frame
           setDetectedDoc(null);
+          lastDetectionRef.current = null;
+          stableFramesRef.current = 0;
         }
       } catch (error) {
         console.error('Document detection error:', error);
         setDetectedDoc(null);
+        lastDetectionRef.current = null;
+        stableFramesRef.current = 0;
       }
 
       setIsDetecting(false);
