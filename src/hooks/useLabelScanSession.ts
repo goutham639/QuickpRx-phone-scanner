@@ -192,6 +192,38 @@ export function useLabelScanSession(): UseLabelScanSession {
     setHasStoredSession(false);
   }, []);
 
+  // Auto-disconnect when page unloads or component unmounts
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Use sendBeacon for reliable delivery during page unload
+      if (sessionIdRef.current && tokenRef.current) {
+        const url = `${API_URL}/v1/label-scan/sessions/${sessionIdRef.current}/leave`;
+        const blob = new Blob([JSON.stringify({})], { type: 'application/json' });
+
+        // sendBeacon doesn't support custom headers, so we need to use fetch with keepalive
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tokenRef.current}`,
+          },
+          keepalive: true,
+        }).catch(() => {
+          // Ignore errors during unload
+        });
+      }
+    };
+
+    // Add event listener for page unload
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Cleanup on component unmount
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Also disconnect on unmount
+      handleBeforeUnload();
+    };
+  }, []); // Empty deps - we use refs to access current values
+
   /**
    * Restore a previous session from storage
    * Validates the token is still active before restoring
