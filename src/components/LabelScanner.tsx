@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useLabelScanSession } from '../hooks/useLabelScanSession';
 import { useLabelCapture } from '../hooks/useLabelCapture';
 import { useBurstCapture } from '../hooks/useBurstCapture';
+import { useLabelDetection } from '../hooks/useLabelDetection';
 import ImageQualityOverlay, { CaptureWarningModal } from './ImageQualityOverlay';
+import DocumentBorderOverlay from './DocumentBorderOverlay';
 import { IMAGE_CAPTURE_CONFIG } from '../config/imageCapture';
 import type { ImageQualityResult } from '../types/imageCapture';
 import { preValidateImage, type PreValidationResult } from '../utils/imagePreValidation';
@@ -61,7 +63,21 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
     blob: Blob;
     result: PreValidationResult;
   } | null>(null);
+  const [autoDetectEnabled, setAutoDetectEnabled] = useState<boolean>(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraContainerRef = useRef<HTMLDivElement>(null);
+
+  // Derived state
+  const isJoining = sessionStatus === 'joining';
+  const isConnected = sessionStatus === 'active' || sessionStatus === 'uploading';
+  const isCameraActive = cameraStatus === 'active' || cameraStatus === 'capturing';
+  const isUploading = sessionStatus === 'uploading';
+
+  // Label detection hook
+  const { detectedDoc } = useLabelDetection(
+    videoRef as React.RefObject<HTMLVideoElement>,
+    isCameraActive && autoDetectEnabled
+  );
 
   // Auto-restore session on mount if requested
   useEffect(() => {
@@ -296,10 +312,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
     processAndUpload,
   ]);
 
-  const isJoining = sessionStatus === 'joining';
-  const isConnected = sessionStatus === 'active' || sessionStatus === 'uploading';
-  const isCameraActive = cameraStatus === 'active' || cameraStatus === 'capturing';
-  const isUploading = sessionStatus === 'uploading';
+  const isBurstCapturing = burstStatus === 'capturing' || burstStatus === 'analyzing';
 
   // State 0: Restoring session
   if (isRestoring || (autoRestore && !sessionId && sessionStatus === 'joining')) {
@@ -449,11 +462,9 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
     );
   }
 
-  const isBurstCapturing = burstStatus === 'capturing' || burstStatus === 'analyzing';
-
   // State 2 & 3: Camera active with upload feedback
   return (
-    <main className="h-screen flex flex-col bg-black" role="main" aria-label="Label Scanner">
+    <main className="fixed inset-0 flex flex-col bg-black overflow-hidden" role="main" aria-label="Label Scanner">
       {/* Pre-Validation Warning Modal */}
       {showPreValidationWarning && pendingPreValidation && (
         <div
@@ -648,7 +659,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
       )}
 
       {/* Header Bar */}
-      <header className="safe-top bg-black/80 backdrop-blur flex items-center justify-between px-4 py-3">
+      <header className="flex-shrink-0 safe-top bg-black/80 backdrop-blur flex items-center justify-between px-4 py-3">
         {/* Connection Status */}
         <div className="flex items-center gap-2" role="status" aria-live="polite">
           <div
@@ -695,7 +706,7 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
       </header>
 
       {/* Camera View */}
-      <div className="flex-1 relative overflow-hidden" role="region" aria-label="Camera viewfinder">
+      <div ref={cameraContainerRef} className="flex-1 min-h-0 relative overflow-hidden" role="region" aria-label="Camera viewfinder">
         {/* Video Element */}
         <video
           ref={videoRef as React.RefObject<HTMLVideoElement>}
@@ -741,55 +752,92 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
           />
         )}
 
-        {/* Document Scanner Frame Guide */}
+        {/* Document Border Detection Overlay */}
+        {isCameraActive && !cameraError && autoDetectEnabled && cameraContainerRef.current && (
+          <DocumentBorderOverlay
+            detectedDoc={detectedDoc}
+            videoRef={videoRef as React.RefObject<HTMLVideoElement>}
+            containerWidth={cameraContainerRef.current.clientWidth}
+            containerHeight={cameraContainerRef.current.clientHeight}
+          />
+        )}
+
+        {/* Instruction Text Overlay */}
         {isCameraActive && !cameraError && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
-            {/* Dark overlay with cutout for the frame */}
-            <div className="absolute inset-0 bg-black/40" />
-
-            {/* Frame container - typical prescription label aspect ratio (3:2) */}
-            <div className="relative z-10 w-[85%] max-w-md aspect-[3/2]">
-              {/* Main border with subtle glow */}
-              <div className="absolute inset-0 border-2 border-white/60 rounded-lg shadow-[0_0_0_1px_rgba(0,0,0,0.4),0_0_20px_rgba(255,255,255,0.2)]" />
-
-              {/* Animated corner brackets */}
-              <div className="absolute -top-1 -left-1 w-12 h-12 border-t-[5px] border-l-[5px] border-green-400 rounded-tl-lg drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
-              <div className="absolute -top-1 -right-1 w-12 h-12 border-t-[5px] border-r-[5px] border-green-400 rounded-tr-lg drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
-              <div className="absolute -bottom-1 -left-1 w-12 h-12 border-b-[5px] border-l-[5px] border-green-400 rounded-bl-lg drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
-              <div className="absolute -bottom-1 -right-1 w-12 h-12 border-b-[5px] border-r-[5px] border-green-400 rounded-br-lg drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
-
-              {/* Helper text inside frame */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full">
-                  <p className="text-white text-xs font-medium">
-                    Align label here
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Instruction text below frame */}
             <div className="absolute bottom-[15%] left-0 right-0 text-center">
               <div className="inline-flex flex-col items-center gap-2 bg-black/70 backdrop-blur-sm px-6 py-3 rounded-2xl">
-                <svg
-                  className="w-6 h-6 text-green-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                <p className="text-white text-sm font-medium" role="status">
-                  Position label within frame
-                </p>
-                <p className="text-white/70 text-xs">
-                  Hold steady for best results
-                </p>
+                {autoDetectEnabled ? (
+                  <>
+                    {detectedDoc && detectedDoc.confidence > 0.7 ? (
+                      <>
+                        <svg
+                          className="w-6 h-6 text-green-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        <p className="text-green-400 text-sm font-medium" role="status">
+                          Label Detected
+                        </p>
+                        <p className="text-white/70 text-xs">
+                          Hold steady and capture
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-6 h-6 text-white/70 animate-pulse"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                          />
+                        </svg>
+                        <p className="text-white text-sm font-medium" role="status">
+                          Searching for label...
+                        </p>
+                        <p className="text-white/70 text-xs">
+                          Position label in view
+                        </p>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                      />
+                    </svg>
+                    <p className="text-white text-sm font-medium" role="status">
+                      Manual Mode
+                    </p>
+                    <p className="text-white/70 text-xs">
+                      Position label and capture
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -827,24 +875,24 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
       </div>
 
       {/* Bottom Bar */}
-      <footer className="safe-bottom bg-black/80 backdrop-blur px-4 py-4">
-        {/* Mode and Burst Toggle Row */}
-        <div className="mb-4 flex items-center justify-between">
+      <footer className="flex-shrink-0 safe-bottom bg-black/80 backdrop-blur px-4 py-4">
+        {/* Mode and Toggles Row */}
+        <div className="mb-4 flex items-center justify-between gap-2">
           <span className="text-gray-400 text-sm">Mode: Label Scan</span>
 
-          {/* Burst Mode Toggle */}
-          {IMAGE_CAPTURE_CONFIG.enableBurstMode && (
+          <div className="flex items-center gap-2">
+            {/* Auto-Detect Toggle */}
             <button
-              onClick={() => setBurstModeEnabled((prev) => !prev)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 ${
-                burstModeEnabled
-                  ? 'bg-blue-600 text-white'
+              onClick={() => setAutoDetectEnabled((prev) => !prev)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 ${
+                autoDetectEnabled
+                  ? 'bg-green-600 text-white'
                   : 'bg-gray-700 text-gray-300'
               }`}
-              aria-pressed={burstModeEnabled}
-              aria-label={`Burst mode ${burstModeEnabled ? 'enabled' : 'disabled'}. Captures multiple frames and selects the sharpest.`}
+              aria-pressed={autoDetectEnabled}
+              aria-label={`Auto-detect ${autoDetectEnabled ? 'enabled' : 'disabled'}. Automatically detects label boundaries.`}
             >
-              {/* Burst icon */}
+              {/* Detection icon */}
               <svg
                 className="w-4 h-4"
                 fill="none"
@@ -856,12 +904,43 @@ export default function LabelScanner({ onDisconnect, onModeSwitch, autoRestore =
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              Burst {burstModeEnabled ? 'On' : 'Off'}
+              Auto {autoDetectEnabled ? 'On' : 'Off'}
             </button>
-          )}
+
+            {/* Burst Mode Toggle */}
+            {IMAGE_CAPTURE_CONFIG.enableBurstMode && (
+              <button
+                onClick={() => setBurstModeEnabled((prev) => !prev)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                  burstModeEnabled
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+                aria-pressed={burstModeEnabled}
+                aria-label={`Burst mode ${burstModeEnabled ? 'enabled' : 'disabled'}. Captures multiple frames and selects the sharpest.`}
+              >
+                {/* Burst icon */}
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                  />
+                </svg>
+                Burst {burstModeEnabled ? 'On' : 'Off'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Capture Button */}
