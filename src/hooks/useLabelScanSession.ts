@@ -195,12 +195,10 @@ export function useLabelScanSession(): UseLabelScanSession {
   // Auto-disconnect when page unloads or component unmounts
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // Use sendBeacon for reliable delivery during page unload
+      // Use fetch with keepalive for reliable delivery during page unload
       if (sessionIdRef.current && tokenRef.current) {
         const url = `${API_URL}/v1/label-scan/sessions/${sessionIdRef.current}/leave`;
-        const blob = new Blob([JSON.stringify({})], { type: 'application/json' });
 
-        // sendBeacon doesn't support custom headers, so we need to use fetch with keepalive
         fetch(url, {
           method: 'POST',
           headers: {
