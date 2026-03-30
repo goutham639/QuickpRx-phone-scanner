@@ -245,7 +245,7 @@ function validateDetection(
   corners: Corner[],
   width: number,
   height: number,
-  imageData: ImageData
+  _imageData: ImageData
 ): { isValid: boolean; confidence: number; area: number } {
   const area = calculateArea(corners);
   const imageArea = width * height;
