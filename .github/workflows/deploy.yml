@@ -8,13 +8,12 @@ on:
 
 jobs:
   build-and-push:
-    name: Build and Push to DOCR
-    runs-on: ubuntu-latest
+    name: Build and Push to Registry
+    runs-on: ubuntu-24.04-arm
     environment: Prod
 
     env:
-      DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
-      DOCR_REPOSITORY: ${{ secrets.DOCR_REPOSITORY }}
+      ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
 
     steps:
       - name: Checkout code
@@ -23,18 +22,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to DigitalOcean Container Registry
-        uses: docker/login-action@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          registry: ${{ secrets.DOCR_REGISTRY }}
-          username: ${{ secrets.DOCR_USERNAME }}
-          password: ${{ secrets.DOCR_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Calculate Tags
         id: meta
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE_BASE="${{ secrets.DOCR_REGISTRY }}/${{ secrets.DOCR_REPOSITORY }}/phone-scanner"
+          IMAGE_BASE="${{ secrets.ECR_REGISTRY }}/quickprx/phone-scanner"
           TAGS="${IMAGE_BASE}:latest,${IMAGE_BASE}:prod,${IMAGE_BASE}:prod-${SHORT_SHA}"
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
           echo "Generated Tags: ${TAGS}"
@@ -44,6 +46,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
@@ -59,8 +62,8 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DROPLET_IP }}
-          username: ${{ secrets.DROPLET_USER }}
+          host: ${{ secrets.EC2_IP }}
+          username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
@@ -68,16 +71,10 @@ jobs:
             echo "Deploying Phone Scanner to Production..."
             cd /opt/app/quickprx
 
-            # Login to Registry
-            echo ${{ secrets.DOCR_TOKEN }} | docker login registry.digitalocean.com -u ${{ secrets.DOCR_USERNAME }} --password-stdin
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-            # Pull latest phone-scanner image
             docker compose -f docker-compose.prod.yml pull phone-scanner
-
-            # Restart phone-scanner service
             docker compose -f docker-compose.prod.yml up -d phone-scanner
-
-            # Clean up old images
             docker image prune -f
 
             echo "Phone Scanner Deployment Complete."
