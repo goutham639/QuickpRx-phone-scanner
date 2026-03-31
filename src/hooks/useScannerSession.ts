@@ -173,7 +173,9 @@ export function useScannerSession(): UseScannerSession {
           return false;
         }
 
-        const data = (await response.json()) as PairResponse;
+        const responseJson = await response.json();
+        // Backend wraps response in { success, data, meta } envelope
+        const data = (responseJson.data || responseJson) as PairResponse;
         setSessionId(data.session_id);
         tokenRef.current = data.token;
         setScanCount(0);

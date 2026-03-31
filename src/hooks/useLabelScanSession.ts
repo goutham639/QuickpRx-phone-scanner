@@ -75,7 +75,9 @@ export function useLabelScanSession(): UseLabelScanSession {
         return false;
       }
 
-      const data = (await response.json()) as LabelScanJoinResponse;
+      const responseJson = await response.json();
+      // Backend wraps response in { success, data, meta } envelope
+      const data = (responseJson.data || responseJson) as LabelScanJoinResponse;
       setSessionId(data.session_id);
       sessionIdRef.current = data.session_id;
       tokenRef.current = data.token;
@@ -149,7 +151,9 @@ export function useLabelScanSession(): UseLabelScanSession {
           return { success: false, error: errorMessage };
         }
 
-        const data = (await response.json()) as LabelScanUploadResponse;
+        const uploadJson = await response.json();
+        // Backend wraps response in { success, data, meta } envelope
+        const data = (uploadJson.data || uploadJson) as LabelScanUploadResponse;
         setUploadCount((prev) => prev + 1);
         setStatus('active');
         return { success: true, scanItemId: data.scan_item.pk };
