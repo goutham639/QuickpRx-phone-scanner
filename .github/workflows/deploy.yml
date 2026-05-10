@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - dev
 
 jobs:
   build-and-push:
@@ -37,8 +38,22 @@ jobs:
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           IMAGE_BASE="${{ secrets.ECR_REGISTRY }}/quickprx/phone-scanner"
-          TAGS="${IMAGE_BASE}:latest,${IMAGE_BASE}:prod,${IMAGE_BASE}:prod-${SHORT_SHA}"
+
+          BUILD_ARGS=""
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            TAGS="${IMAGE_BASE}:latest,${IMAGE_BASE}:prod,${IMAGE_BASE}:prod-${SHORT_SHA}"
+            BUILD_ARGS="VITE_API_BASE_URL=https://api.quickprx.com"
+          elif [ "${{ github.ref_name }}" = "dev" ]; then
+            TAGS="${IMAGE_BASE}:dev,${IMAGE_BASE}:dev-${SHORT_SHA}"
+            BUILD_ARGS="VITE_API_BASE_URL=https://api-test.quickprx.ca"
+          fi
+
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          {
+            echo "build_args<<EOF"
+            echo "${BUILD_ARGS}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "Generated Tags: ${TAGS}"
 
       - name: Build and Push
@@ -49,6 +64,7 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: ${{ steps.meta.outputs.build_args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -57,6 +73,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: Prod
+    if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Deploy via SSH
