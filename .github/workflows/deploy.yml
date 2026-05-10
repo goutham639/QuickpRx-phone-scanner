@@ -42,10 +42,10 @@ jobs:
           BUILD_ARGS=""
           if [ "${{ github.ref_name }}" = "main" ]; then
             TAGS="${IMAGE_BASE}:latest,${IMAGE_BASE}:prod,${IMAGE_BASE}:prod-${SHORT_SHA}"
-            BUILD_ARGS="VITE_API_BASE_URL=https://api.quickprx.com"
+            BUILD_ARGS="VITE_API_URL=https://api.quickprx.com"
           elif [ "${{ github.ref_name }}" = "dev" ]; then
             TAGS="${IMAGE_BASE}:dev,${IMAGE_BASE}:dev-${SHORT_SHA}"
-            BUILD_ARGS="VITE_API_BASE_URL=https://api-test.quickprx.ca"
+            BUILD_ARGS="VITE_API_URL=https://api-test.quickprx.ca"
           fi
 
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
